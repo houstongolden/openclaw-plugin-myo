@@ -9,6 +9,9 @@ openclaw gateway restart
 openclaw myo status
 ```
 
+## Fresh install proof (smoke test)
+See: `docs/VANILLA_OPENCLAW_SETUP.md`
+
 ## Commands (WIP)
 - `openclaw myo init` — create local `~/.myo` tree
 - `openclaw myo connect --api-key ...` — persist API key into OpenClaw config

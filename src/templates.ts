@@ -50,5 +50,35 @@ export function renderTasksMd(params: { tasks: any[] }) {
 
 export function renderJobsMd(params: { jobs: any[] }) {
   const jobs = params.jobs || [];
-  return `# JOBS\n\n${jobs.length ? jobs.map((j) => `- ${j.cron_expression} (${j.timezone}) ${j.enabled ? "ON" : "OFF"}`).join("\n") : "- (none)"}\n`;
+  // Editable format (plugin parses):
+  // - [x] 0 8 * * * (America/Los_Angeles) (id:uuid)
+  // - [ ] 0 14 * * * (UTC) (id:uuid)
+  if (!jobs.length) return "# JOBS\n\n- (none)\n";
+  return (
+    "# JOBS\n\n" +
+    jobs
+      .map((j) => {
+        const enabled = !!j.enabled;
+        const cron = j.cron_expression || "";
+        const tz = j.timezone || "UTC";
+        return `- [${enabled ? "x" : " "}] ${cron} (${tz}) (id:${j.id})`;
+      })
+      .join("\n") +
+    "\n"
+  );
+}
+
+export function renderSessionsMd(params: { sessions: any[] }) {
+  const sessions = params.sessions || [];
+  if (!sessions.length) return "# SESSIONS\n\n- (none)\n";
+
+  const line = (s: any) => {
+    const title = s.title || s.key || "(untitled)";
+    const channel = s.channel ? ` • ${s.channel}` : "";
+    const agent = s.agent ? ` • ${s.agent}` : "";
+    const last = s.last_message_at ? ` • last: ${new Date(s.last_message_at).toLocaleString()}` : "";
+    return `- ${title}${channel}${agent}${last}  (key:${s.key})`;
+  };
+
+  return `# SESSIONS\n\n${sessions.map(line).join("\n")}\n`;
 }

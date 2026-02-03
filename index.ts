@@ -4,6 +4,7 @@ import os from "node:os";
 import { discoverLocalMyoApiKey } from "./src/auth.js";
 import { ensureDir, writeTextFile } from "./src/fs.js";
 import { collectTaskUpdatesFromRoot } from "./src/push.js";
+import { collectJobUpdatesFromRoot } from "./src/push-jobs.js";
 import {
   renderGoalsMd,
   renderJobsMd,
@@ -11,9 +12,10 @@ import {
   renderProjectMd,
   renderTasksMd,
   renderUserMd,
+  renderSessionsMd,
   slugify,
 } from "./src/templates.js";
-import { fetchMyoclawSync } from "./src/myo-api.js";
+import { fetchMyoclawSessions, fetchMyoclawSync, updateMyoclawJobs } from "./src/myo-api.js";
 import { watchTasksMd } from "./src/watch.js";
 
 type MyoPluginConfig = {
@@ -70,6 +72,14 @@ async function runSeedSync(api: OpenClawPluginApi, overrides?: { rootDir?: strin
   await writeTextFile(path.join(root, "MEMORY.md"), renderMemoryMd({ seed: payload.memorySeed || null }));
   await writeTextFile(path.join(root, "JOBS.md"), renderJobsMd({ jobs: payload.jobs || [] }));
 
+  // Sessions (best-effort; requires gateway session mirror in Myo DB)
+  try {
+    const sessions = await fetchMyoclawSessions({ apiBaseUrl, apiKey: cfg.apiKey, limit: 50 });
+    await writeTextFile(path.join(root, "SESSIONS.md"), renderSessionsMd({ sessions }));
+  } catch {
+    // Non-critical; don't fail sync.
+  }
+
   // Projects + tasks
   const projects = payload.projects || [];
   const tasks = payload.tasks || [];
@@ -102,34 +112,44 @@ async function runPush(api: OpenClawPluginApi, opts?: { dryRun?: boolean; checke
   const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
   const root = expandHome(cfg.rootDir || "~/.myo");
 
-  const updates = await collectTaskUpdatesFromRoot(root, { includeUnchecked: !opts?.checkedOnly });
-  if (!updates.length) {
-    api.logger.info("[myo] push: no task lines found in TASKS.md");
+  const taskUpdates = await collectTaskUpdatesFromRoot(root, { includeUnchecked: !opts?.checkedOnly });
+  const jobUpdates = await collectJobUpdatesFromRoot(root);
+
+  if (!taskUpdates.length && !jobUpdates.length) {
+    api.logger.info("[myo] push: no updates found (TASKS.md / JOBS.md)");
     return;
   }
 
   if (opts?.dryRun) {
-    api.logger.info(`[myo] push --dry-run: would update ${updates.length} tasks`);
-    for (const u of updates.slice(0, 50)) api.logger.info(`  - ${u.id} -> ${u.status}`);
-    if (updates.length > 50) api.logger.info(`  ... (+${updates.length - 50} more)`);
+    api.logger.info(`[myo] push --dry-run:`);
+    api.logger.info(`  - tasks: ${taskUpdates.length}`);
+    api.logger.info(`  - jobs:  ${jobUpdates.length}`);
+    for (const u of taskUpdates.slice(0, 25)) api.logger.info(`  task ${u.id} -> ${u.status}`);
+    for (const j of jobUpdates.slice(0, 25)) api.logger.info(`  job  ${j.id} -> enabled=${j.enabled} cron="${j.cron_expression}" tz="${j.timezone}"`);
     return;
   }
 
-  const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/tasks/update`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${cfg.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ updates }),
-  });
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok || json?.success === false) {
-    const msg = json?.error?.message || `HTTP ${res.status}`;
-    throw new Error(msg);
+  if (taskUpdates.length) {
+    const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/tasks/update`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfg.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ updates: taskUpdates }),
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok || json?.success === false) {
+      const msg = json?.error?.message || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
   }
 
-  api.logger.info(`[myo] push: updated ${updates.length} tasks`);
+  if (jobUpdates.length) {
+    await updateMyoclawJobs({ apiBaseUrl, apiKey: cfg.apiKey, updates: jobUpdates });
+  }
+
+  api.logger.info(`[myo] push: updated ${taskUpdates.length} tasks, ${jobUpdates.length} jobs`);
 }
 
 function registerMyoCli(api: OpenClawPluginApi, program: any) {

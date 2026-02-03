@@ -2,11 +2,21 @@ import path from "node:path";
 import { listFilesRecursive, readTextFile } from "./fs.js";
 
 export type TaskUpdate = { id: string; status: string };
+export type JobUpdate = {
+  id: string;
+  enabled?: boolean;
+  cron_expression?: string;
+  timezone?: string;
+};
 
 // Parses lines like:
 // - [x] Do thing  (id:abcd)
 // - [ ] Do thing  (id:abcd)
 const TASK_LINE_RE = /^\s*-\s*\[(?<checked>[ xX])\]\s+.*\(id:(?<id>[a-zA-Z0-9-_]+)\)\s*$/;
+
+// Parses lines like:
+// - [x] 0 8 * * * (America/Los_Angeles) (id:uuid)
+const JOB_LINE_RE = /^\s*-\s*\[(?<checked>[ xX])\]\s+(?<cron>.+?)\s+\((?<tz>[^)]+)\)\s+\(id:(?<id>[a-zA-Z0-9-_]+)\)\s*$/;
 
 export async function collectTaskUpdatesFromRoot(
   rootDir: string,
