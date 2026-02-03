@@ -1,0 +1,6 @@
+{
+  "id": "myo",
+  "name": "Myo",
+  "description": "Myo plugin for OpenClaw: connect to myo.ai, sync projects/tasks/memory/jobs, and run work with full context.",
+  "version": "0.0.1"
+}
