@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import path from "node:path";
 import os from "node:os";
+import { discoverLocalMyoApiKey } from "./src/auth.js";
 import { ensureDir, writeTextFile } from "./src/fs.js";
 import { collectTaskUpdatesFromRoot } from "./src/push.js";
 import {
@@ -13,6 +14,7 @@ import {
   slugify,
 } from "./src/templates.js";
 import { fetchMyoclawSync } from "./src/myo-api.js";
+import { watchTasksMd } from "./src/watch.js";
 
 type MyoPluginConfig = {
   enabled?: boolean;
@@ -26,15 +28,32 @@ function expandHome(p: string) {
   return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
 }
 
-async function runSeedSync(api: OpenClawPluginApi) {
+function formatMyoError(err: any) {
+  const msg = err?.message || String(err);
+  if (/Missing apiKey/i.test(msg)) {
+    return [
+      msg,
+      "\nNext steps:",
+      "  - Run: openclaw myo connect --api-key <key>",
+      "  - Or:  openclaw myo import-key (best-effort from local session)",
+    ].join("\n");
+  }
+  if (/ECONNREFUSED|ENOTFOUND|fetch failed|network/i.test(msg)) {
+    return [msg, "\nTip: check your network + apiBaseUrl (openclaw myo status)."].join("\n");
+  }
+  return msg;
+}
+
+async function runSeedSync(api: OpenClawPluginApi, overrides?: { rootDir?: string }) {
   const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
-  const root = expandHome(cfg.rootDir || "~/.myo");
+  const root = expandHome(overrides?.rootDir || cfg.rootDir || "~/.myo");
 
   if (!cfg.apiKey) {
     // v0 fallback: seed minimal files even without API key.
     await writeTextFile(path.join(root, "USER.md"), renderUserMd({ name: "Houston" }));
     await writeTextFile(path.join(root, "GOALS.md"), renderGoalsMd());
     await writeTextFile(path.join(root, "MEMORY.md"), renderMemoryMd());
+    await ensureDir(path.join(root, "projects"));
     api.logger.info(`[myo] seeded files in ${root} (no apiKey; v0)`);
     return;
   }
@@ -77,6 +96,41 @@ async function runSeedSync(api: OpenClawPluginApi) {
   api.logger.info(`[myo] synced ${projects.length} projects, ${tasks.length} tasks → ${root}`);
 }
 
+async function runPush(api: OpenClawPluginApi, opts?: { dryRun?: boolean; checkedOnly?: boolean }) {
+  const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+  if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
+  const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
+  const root = expandHome(cfg.rootDir || "~/.myo");
+
+  const updates = await collectTaskUpdatesFromRoot(root, { includeUnchecked: !opts?.checkedOnly });
+  if (!updates.length) {
+    api.logger.info("[myo] push: no task lines found in TASKS.md");
+    return;
+  }
+
+  if (opts?.dryRun) {
+    api.logger.info(`[myo] push --dry-run: would update ${updates.length} tasks`);
+    for (const u of updates.slice(0, 50)) api.logger.info(`  - ${u.id} -> ${u.status}`);
+    if (updates.length > 50) api.logger.info(`  ... (+${updates.length - 50} more)`);
+    return;
+  }
+
+  const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/tasks/update`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${cfg.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ updates }),
+  });
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok || json?.success === false) {
+    const msg = json?.error?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  api.logger.info(`[myo] push: updated ${updates.length} tasks`);
+}
 
 function registerMyoCli(api: OpenClawPluginApi, program: any) {
   const myo = program.command("myo").description("Connect OpenClaw to Myo (myo.ai)");
@@ -88,6 +142,58 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
     .option("--root-dir <path>", "Root directory for rendered files", "~/.myo")
     .description("Connect to myo.ai using an API key (persists into OpenClaw config)")
     .action(async (opts: any) => {
+      try {
+        const runtime = api.runtime;
+        const cfg = runtime.config.loadConfig() as any;
+
+        const next = {
+          ...cfg,
+          plugins: {
+            ...cfg.plugins,
+            entries: {
+              ...(cfg.plugins?.entries || {}),
+              myo: {
+                ...(cfg.plugins?.entries?.myo || {}),
+                enabled: true,
+                config: {
+                  ...(cfg.plugins?.entries?.myo?.config || {}),
+                  apiKey: String(opts.apiKey),
+                  apiBaseUrl: String(opts.apiBaseUrl || "https://myo.ai"),
+                  rootDir: String(opts.rootDir || "~/.myo"),
+                },
+              },
+            },
+          },
+        };
+
+        await runtime.config.writeConfigFile(next);
+        api.logger.info(`[myo] connected. saved apiKey + apiBaseUrl + rootDir to config.`);
+      } catch (err: any) {
+        api.logger.error(formatMyoError(err));
+        throw err;
+      }
+    });
+
+  myo
+    .command("import-key")
+    .option("--path <path>", "Optional extra path to try (json or text)")
+    .option("--print", "Print the discovered key to stdout (be careful)", false)
+    .description("Best-effort: discover a Myo API key from a local session/config and store it into OpenClaw config")
+    .action(async (opts: any) => {
+      const found = await discoverLocalMyoApiKey({ extraPaths: opts.path ? [String(opts.path)] : [] });
+      if (!found) {
+        api.logger.error(
+          [
+            "[myo] import-key: could not discover an API key from local session.",
+            "Tried env:MYO_API_KEY + common paths (~/.config/myo, ~/.myo, ~/Library/Application Support/myo).",
+            "You can still run: openclaw myo connect --api-key <key>",
+          ].join("\n"),
+        );
+        return;
+      }
+
+      if (opts.print) api.logger.info(found.apiKey);
+
       const runtime = api.runtime;
       const cfg = runtime.config.loadConfig() as any;
 
@@ -102,9 +208,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
               enabled: true,
               config: {
                 ...(cfg.plugins?.entries?.myo?.config || {}),
-                apiKey: String(opts.apiKey),
-                apiBaseUrl: String(opts.apiBaseUrl || "https://myo.ai"),
-                rootDir: String(opts.rootDir || "~/.myo"),
+                apiKey: found.apiKey,
               },
             },
           },
@@ -112,7 +216,24 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
       };
 
       await runtime.config.writeConfigFile(next);
-      api.logger.info(`[myo] connected. saved apiKey + apiBaseUrl + rootDir to config.`);
+      api.logger.info(`[myo] import-key: saved apiKey from ${found.source}`);
+    });
+
+  myo
+    .command("init")
+    .option("--root-dir <path>", "Root directory for rendered files", "~/.myo")
+    .description("Initialize the local ~/.myo file tree (creates base files + folders)")
+    .action(async (opts: any) => {
+      try {
+        const rootDir = expandHome(String(opts.rootDir || "~/.myo"));
+        await ensureDir(rootDir);
+        // `runSeedSync` will do a full sync if apiKey is configured; otherwise it seeds minimal files.
+        await runSeedSync(api, { rootDir });
+        api.logger.info(`[myo] init complete → ${rootDir}`);
+      } catch (err: any) {
+        api.logger.error(formatMyoError(err));
+        throw err;
+      }
     });
 
   myo
@@ -129,42 +250,50 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
   myo
     .command("sync")
     .option("--once", "Run a single sync pass", true)
-    .description("Sync projects/tasks/memory/jobs")
+    .description("Sync projects/tasks/memory/jobs (DB → files)")
     .action(async () => {
-      await runSeedSync(api);
-      api.logger.info(`[myo] sync complete`);
+      try {
+        await runSeedSync(api);
+        api.logger.info(`[myo] sync complete`);
+      } catch (err: any) {
+        api.logger.error(formatMyoError(err));
+        throw err;
+      }
     });
 
   myo
     .command("push")
-    .description("Push local edits back to Myo (v0: TASKS.md checkboxes -> task.status=done)")
-    .action(async () => {
+    .option("--dry-run", "Compute updates but do not POST to Myo", false)
+    .option("--checked-only", "Only push checked tasks (legacy v0 behavior)", false)
+    .description("Push local edits back to Myo (TASKS.md checkboxes → task.status)")
+    .action(async (opts: any) => {
+      try {
+        await runPush(api, { dryRun: Boolean(opts.dryRun), checkedOnly: Boolean(opts.checkedOnly) });
+      } catch (err: any) {
+        api.logger.error(formatMyoError(err));
+        throw err;
+      }
+    });
+
+  myo
+    .command("watch")
+    .option("--interval-ms <ms>", "Polling interval in ms", "3000")
+    .option("--dry-run", "Compute updates but do not POST to Myo", false)
+    .option("--checked-only", "Only push checked tasks (legacy v0 behavior)", false)
+    .description("Watch local TASKS.md for changes and push updates")
+    .action(async (opts: any) => {
       const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
-      if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
-      const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
       const root = expandHome(cfg.rootDir || "~/.myo");
+      const intervalMs = Number(opts.intervalMs || 3000);
 
-      const updates = await collectTaskUpdatesFromRoot(root);
-      if (!updates.length) {
-        api.logger.info("[myo] push: no checked tasks found");
-        return;
-      }
-
-      const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/tasks/update`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${cfg.apiKey}`,
-          "Content-Type": "application/json",
+      await watchTasksMd({
+        rootDir: root,
+        intervalMs,
+        logger: api.logger,
+        onChange: async () => {
+          await runPush(api, { dryRun: Boolean(opts.dryRun), checkedOnly: Boolean(opts.checkedOnly) });
         },
-        body: JSON.stringify({ updates }),
       });
-      const json: any = await res.json().catch(() => ({}));
-      if (!res.ok || json?.success === false) {
-        const msg = json?.error?.message || `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-
-      api.logger.info(`[myo] push: updated ${updates.length} tasks`);
     });
 }
 

@@ -10,9 +10,13 @@ openclaw myo status
 ```
 
 ## Commands (WIP)
-- `openclaw myo connect`
+- `openclaw myo init` — create local `~/.myo` tree
+- `openclaw myo connect --api-key ...` — persist API key into OpenClaw config
+- `openclaw myo import-key` — best-effort import API key from local session/env
 - `openclaw myo status`
 - `openclaw myo sync`
+- `openclaw myo push [--dry-run] [--checked-only]`
+- `openclaw myo watch [--dry-run]` — poll for TASKS.md changes and push
 
 ## Status
 Early scaffold. Spec lives in:
