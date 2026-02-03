@@ -8,11 +8,15 @@
     "additionalProperties": false,
     "properties": {
       "enabled": { "type": "boolean", "default": true },
-      "apiBaseUrl": { "type": "string", "default": "https://myo.ai" }
+      "apiBaseUrl": { "type": "string", "default": "https://myo.ai" },
+      "apiKey": { "type": "string" },
+      "rootDir": { "type": "string", "default": "~/.myo" }
     }
   },
   "uiHints": {
     "enabled": { "label": "Enabled" },
-    "apiBaseUrl": { "label": "Myo API Base URL" }
+    "apiBaseUrl": { "label": "Myo API Base URL" },
+    "apiKey": { "label": "Myo API Key", "sensitive": true },
+    "rootDir": { "label": "Root Directory" }
   }
 }
