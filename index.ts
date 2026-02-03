@@ -2,6 +2,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import path from "node:path";
 import os from "node:os";
 import { ensureDir, writeTextFile } from "./src/fs.js";
+import { collectTaskUpdatesFromRoot } from "./src/push.js";
 import {
   renderGoalsMd,
   renderJobsMd,
@@ -128,10 +129,42 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
   myo
     .command("sync")
     .option("--once", "Run a single sync pass", true)
-    .description("Sync projects/tasks/memory/jobs (v0: seed local files)")
+    .description("Sync projects/tasks/memory/jobs")
     .action(async () => {
       await runSeedSync(api);
-      api.logger.info(`[myo] sync complete (v0 seed)`);
+      api.logger.info(`[myo] sync complete`);
+    });
+
+  myo
+    .command("push")
+    .description("Push local edits back to Myo (v0: TASKS.md checkboxes -> task.status=done)")
+    .action(async () => {
+      const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+      if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
+      const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
+      const root = expandHome(cfg.rootDir || "~/.myo");
+
+      const updates = await collectTaskUpdatesFromRoot(root);
+      if (!updates.length) {
+        api.logger.info("[myo] push: no checked tasks found");
+        return;
+      }
+
+      const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/tasks/update`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cfg.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ updates }),
+      });
+      const json: any = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) {
+        const msg = json?.error?.message || `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+
+      api.logger.info(`[myo] push: updated ${updates.length} tasks`);
     });
 }
 
