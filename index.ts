@@ -82,15 +82,36 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
 
   myo
     .command("connect")
-    .option("--api-key <key>", "Myo API key (stores in plugin config; WIP)")
+    .requiredOption("--api-key <key>", "Myo API key")
     .option("--api-base-url <url>", "Myo API base URL", "https://myo.ai")
-    .description("Connect to myo.ai (v0: store api base + optional api key)")
-    .action((opts: any) => {
-      // NOTE: OpenClaw plugin API doesn't currently allow writing config here.
-      // v0: we just verify CLI wiring and show next step.
-      api.logger.info(`[myo] connect wired. apiBaseUrl=${opts.apiBaseUrl}`);
-      if (opts.apiKey) api.logger.info(`[myo] apiKey provided (not persisted yet).`);
-      api.logger.info(`[myo] next: persist token in plugins.entries.myo.config via config API.`);
+    .option("--root-dir <path>", "Root directory for rendered files", "~/.myo")
+    .description("Connect to myo.ai using an API key (persists into OpenClaw config)")
+    .action(async (opts: any) => {
+      const runtime = api.runtime;
+      const cfg = runtime.config.loadConfig() as any;
+
+      const next = {
+        ...cfg,
+        plugins: {
+          ...cfg.plugins,
+          entries: {
+            ...(cfg.plugins?.entries || {}),
+            myo: {
+              ...(cfg.plugins?.entries?.myo || {}),
+              enabled: true,
+              config: {
+                ...(cfg.plugins?.entries?.myo?.config || {}),
+                apiKey: String(opts.apiKey),
+                apiBaseUrl: String(opts.apiBaseUrl || "https://myo.ai"),
+                rootDir: String(opts.rootDir || "~/.myo"),
+              },
+            },
+          },
+        },
+      };
+
+      await runtime.config.writeConfigFile(next);
+      api.logger.info(`[myo] connected. saved apiKey + apiBaseUrl + rootDir to config.`);
     });
 
   myo
