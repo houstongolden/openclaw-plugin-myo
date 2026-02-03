@@ -27,11 +27,14 @@ export function renderTasksMd(params: { tasks: any[] }) {
   const tasks = params.tasks || [];
   const byStatus = (s: string) => tasks.filter((t) => t.status === s);
 
+  const renderLine = (t: any) => {
+    const checked = String(t.status || "").toLowerCase() === "done";
+    return `- [${checked ? "x" : " "}] ${t.title || "(untitled)"}  (id:${t.id})`;
+  };
+
   const section = (title: string, items: any[]) => {
     if (!items.length) return `## ${title}\n\n- (none)\n`;
-    return `## ${title}\n\n${items
-      .map((t) => `- [ ] ${t.title || "(untitled)"}  (id:${t.id})`)
-      .join("\n")}\n`;
+    return `## ${title}\n\n${items.map(renderLine).join("\n")}\n`;
   };
 
   return [
@@ -41,6 +44,7 @@ export function renderTasksMd(params: { tasks: any[] }) {
     section("In Progress", byStatus("in_progress")),
     section("Queued", byStatus("queued")),
     section("Backlog", byStatus("pending")),
+    section("Done", byStatus("done")),
   ].join("\n");
 }
 
