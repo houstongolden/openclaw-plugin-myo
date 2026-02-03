@@ -50,5 +50,31 @@ export function renderTasksMd(params: { tasks: any[] }) {
 
 export function renderJobsMd(params: { jobs: any[] }) {
   const jobs = params.jobs || [];
-  return `# JOBS\n\n${jobs.length ? jobs.map((j) => `- ${j.cron_expression} (${j.timezone}) ${j.enabled ? "ON" : "OFF"}`).join("\n") : "- (none)"}\n`;
+  const lines = jobs.map((j) => {
+    const name = j.name || j.id || "(unnamed)";
+    const cron = j.cron_expression || j.cron || "";
+    const tz = j.timezone || j.tz || "";
+    const on = j.enabled !== false;
+    return `- ${name}: ${cron}${tz ? ` (${tz})` : ""} ${on ? "ON" : "OFF"}`;
+  });
+  return `# JOBS\n\n${lines.length ? lines.join("\n") : "- (none)"}\n`;
+}
+
+export function renderHeartbeatsMd(params: { heartbeats: any[] }) {
+  const heartbeats = params.heartbeats || [];
+
+  const renderLine = (h: any) => {
+    const every = h.interval_minutes ?? h.intervalMinutes ?? h.every_minutes ?? h.everyMinutes;
+    const cadence = every ? `every ${every}m` : h.cron_expression ? `cron ${h.cron_expression}` : "(interval unknown)";
+    const enabled = h.enabled === false ? "OFF" : "ON";
+    const name = h.name || h.id || "(unnamed)";
+    return `- ${name}: ${cadence} ${enabled}`;
+  };
+
+  return [
+    "# HEARTBEATS\n",
+    "Heartbeats are *approximate* periodic check-ins (not exact cron).\n",
+    heartbeats.length ? heartbeats.map(renderLine).join("\n") : "- (none)",
+    "",
+  ].join("\n");
 }

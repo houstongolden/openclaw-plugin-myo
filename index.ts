@@ -6,6 +6,7 @@ import { ensureDir, writeTextFile } from "./src/fs.js";
 import { collectTaskUpdatesFromRoot } from "./src/push.js";
 import {
   renderGoalsMd,
+  renderHeartbeatsMd,
   renderJobsMd,
   renderMemoryMd,
   renderProjectMd,
@@ -14,6 +15,9 @@ import {
   slugify,
 } from "./src/templates.js";
 import { fetchMyoclawSync } from "./src/myo-api.js";
+import { normalizeMyoApiBaseUrl } from "./src/url.js";
+import { getJobsDir, myoJobToJobFileStem, renderJobMd } from "./src/jobs.js";
+import { syncMyoJobsToOpenClawCron } from "./src/cron-sync.js";
 import { watchTasksMd } from "./src/watch.js";
 
 type MyoPluginConfig = {
@@ -30,6 +34,7 @@ function expandHome(p: string) {
 
 function formatMyoError(err: any) {
   const msg = err?.message || String(err);
+
   if (/Missing apiKey/i.test(msg)) {
     return [
       msg,
@@ -38,9 +43,36 @@ function formatMyoError(err: any) {
       "  - Or:  openclaw myo import-key (best-effort from local session)",
     ].join("\n");
   }
-  if (/ECONNREFUSED|ENOTFOUND|fetch failed|network/i.test(msg)) {
+
+  if (/HTTP 401|HTTP 403|unauthorized|forbidden/i.test(msg)) {
+    return [
+      msg,
+      "\nThis usually means your API key is missing/expired/revoked.",
+      "Fix:",
+      "  - Run: openclaw myo connect --api-key <key>",
+      "  - Or:  openclaw myo import-key",
+    ].join("\n");
+  }
+
+  if (/HTTP 404|not found/i.test(msg)) {
+    return [
+      msg,
+      "\nTip: check apiBaseUrl. It should usually be https://myo.ai (openclaw myo status).",
+    ].join("\n");
+  }
+
+  if (/redirect/i.test(msg)) {
+    return [
+      msg,
+      "\nTip: use the canonical base URL (no redirects) because redirects can drop Authorization headers.",
+      "Try: openclaw myo connect --api-base-url https://myo.ai --api-key <key>",
+    ].join("\n");
+  }
+
+  if (/ECONNREFUSED|ENOTFOUND|fetch failed|network|ETIMEDOUT/i.test(msg)) {
     return [msg, "\nTip: check your network + apiBaseUrl (openclaw myo status)."].join("\n");
   }
+
   return msg;
 }
 
@@ -58,7 +90,7 @@ async function runSeedSync(api: OpenClawPluginApi, overrides?: { rootDir?: strin
     return;
   }
 
-  const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
+  const apiBaseUrl = normalizeMyoApiBaseUrl(cfg.apiBaseUrl || "https://myo.ai");
   const payload = await fetchMyoclawSync({ apiBaseUrl, apiKey: cfg.apiKey });
 
   // Root files
@@ -68,7 +100,24 @@ async function runSeedSync(api: OpenClawPluginApi, overrides?: { rootDir?: strin
   );
   await writeTextFile(path.join(root, "GOALS.md"), renderGoalsMd());
   await writeTextFile(path.join(root, "MEMORY.md"), renderMemoryMd({ seed: payload.memorySeed || null }));
-  await writeTextFile(path.join(root, "JOBS.md"), renderJobsMd({ jobs: payload.jobs || [] }));
+  const jobs = (payload as any).jobs || [];
+  await writeTextFile(path.join(root, "JOBS.md"), renderJobsMd({ jobs }));
+  await writeTextFile(
+    path.join(root, "HEARTBEATS.md"),
+    renderHeartbeatsMd({ heartbeats: (payload as any).heartbeats || [] }),
+  );
+
+  // v1 parity: write one markdown file per job under ~/.myo/jobs/
+  await ensureDir(getJobsDir(root));
+  for (const j of jobs) {
+    const stem = myoJobToJobFileStem(j);
+    await writeTextFile(path.join(getJobsDir(root), `${stem}.md`), renderJobMd(j));
+  }
+
+  // Best-effort: also sync Myo jobs into OpenClaw cron scheduler.
+  await syncMyoJobsToOpenClawCron({ runtime: api.runtime, logger: api.logger, jobs }).catch((err: any) => {
+    api.logger.warn?.(`[myo] cron-sync skipped: ${err?.message || String(err)}`);
+  });
 
   // Projects + tasks
   const projects = payload.projects || [];
@@ -99,7 +148,7 @@ async function runSeedSync(api: OpenClawPluginApi, overrides?: { rootDir?: strin
 async function runPush(api: OpenClawPluginApi, opts?: { dryRun?: boolean; checkedOnly?: boolean }) {
   const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
   if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
-  const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
+  const apiBaseUrl = normalizeMyoApiBaseUrl(cfg.apiBaseUrl || "https://myo.ai");
   const root = expandHome(cfg.rootDir || "~/.myo");
 
   const updates = await collectTaskUpdatesFromRoot(root, { includeUnchecked: !opts?.checkedOnly });
@@ -117,12 +166,21 @@ async function runPush(api: OpenClawPluginApi, opts?: { dryRun?: boolean; checke
 
   const res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/tasks/update`, {
     method: "POST",
+    redirect: "manual",
     headers: {
       Authorization: `Bearer ${cfg.apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ updates }),
   });
+  if (res.status >= 300 && res.status < 400) {
+    const loc = res.headers.get("location");
+    throw new Error(
+      `Myo API returned a redirect (HTTP ${res.status}) to ${loc || "(no location)"}. ` +
+        `This can cause clients to drop Authorization. Use the canonical apiBaseUrl (try https://myo.ai).`,
+    );
+  }
+
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok || json?.success === false) {
     const msg = json?.error?.message || `HTTP ${res.status}`;
@@ -158,7 +216,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
                 config: {
                   ...(cfg.plugins?.entries?.myo?.config || {}),
                   apiKey: String(opts.apiKey),
-                  apiBaseUrl: String(opts.apiBaseUrl || "https://myo.ai"),
+                  apiBaseUrl: normalizeMyoApiBaseUrl(String(opts.apiBaseUrl || "https://myo.ai")),
                   rootDir: String(opts.rootDir || "~/.myo"),
                 },
               },
@@ -250,7 +308,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
   myo
     .command("sync")
     .option("--once", "Run a single sync pass", true)
-    .description("Sync projects/tasks/memory/jobs (DB → files)")
+    .description("Sync projects/tasks/memory/jobs/heartbeats (DB → files)")
     .action(async () => {
       try {
         await runSeedSync(api);
@@ -294,6 +352,44 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
           await runPush(api, { dryRun: Boolean(opts.dryRun), checkedOnly: Boolean(opts.checkedOnly) });
         },
       });
+    });
+
+  myo
+    .command("jobs:watch")
+    .option("--interval-ms <ms>", "Polling interval in ms", "10000")
+    .option("--dry-run", "Show intended cron edits but do not apply", false)
+    .description("Watch Myo jobs and keep OpenClaw cron in sync")
+    .action(async (opts: any) => {
+      const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+      if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
+
+      const apiBaseUrl = normalizeMyoApiBaseUrl(cfg.apiBaseUrl || "https://myo.ai");
+      const intervalMs = Math.max(1000, Number(opts.intervalMs || 10000));
+
+      let lastFp = "";
+      api.logger.info(`[myo] jobs:watch polling ${apiBaseUrl}/api/myoclaw/sync every ${intervalMs}ms (Ctrl+C to stop)`);
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const payload = await fetchMyoclawSync({ apiBaseUrl, apiKey: cfg.apiKey });
+        const jobs = (payload as any).jobs || [];
+        const fp = JSON.stringify(jobs.map((j: any) => ({
+          id: j.id,
+          name: j.name,
+          cron_expression: j.cron_expression,
+          timezone: j.timezone,
+          enabled: j.enabled,
+          payload_kind: j.payload_kind,
+          payload_text: j.payload_text,
+        })));
+
+        if (fp !== lastFp) {
+          lastFp = fp;
+          await syncMyoJobsToOpenClawCron({ runtime: api.runtime, logger: api.logger, jobs, dryRun: Boolean(opts.dryRun) });
+        }
+
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
     });
 }
 
