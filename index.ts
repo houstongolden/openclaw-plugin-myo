@@ -162,7 +162,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
   myo
     .command("connect")
     .requiredOption("--api-key <key>", "Myo API key")
-    .option("--api-base-url <url>", "Myo API base URL", "https://myo.ai")
+    .option("--api-base-url <url>", "Myo API base URL", "https://www.myo.ai")
     .option("--root-dir <path>", "Root directory for rendered files", "~/.myo")
     .description("Connect to myo.ai using an API key (persists into OpenClaw config)")
     .action(async (opts: any) => {
@@ -182,7 +182,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
                 config: {
                   ...(cfg.plugins?.entries?.myo?.config || {}),
                   apiKey: String(opts.apiKey),
-                  apiBaseUrl: String(opts.apiBaseUrl || "https://myo.ai"),
+                  apiBaseUrl: String(opts.apiBaseUrl || "https://www.myo.ai"),
                   rootDir: String(opts.rootDir || "~/.myo"),
                 },
               },

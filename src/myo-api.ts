@@ -16,6 +16,13 @@ export type MyoclawSession = {
   updated_at?: string;
 };
 
+function normalizeApiBaseUrl(input: string) {
+  const s = String(input || "").replace(/\/$/, "");
+  // myo.ai redirects to www.myo.ai (307). Node fetch drops Authorization headers on cross-origin redirects.
+  // Normalize so auth headers are preserved.
+  return s.replace(/^https?:\/\/myo\.ai$/i, "https://www.myo.ai");
+}
+
 export async function fetchMyoclawSessions(params: {
   apiBaseUrl: string;
   apiKey: string;
@@ -26,7 +33,8 @@ export async function fetchMyoclawSessions(params: {
   if (params.limit) sp.set("limit", String(params.limit));
   if (params.activeMinutes) sp.set("activeMinutes", String(params.activeMinutes));
 
-  const url = `${params.apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/sessions${sp.toString() ? `?${sp.toString()}` : ""}`;
+  const base = normalizeApiBaseUrl(params.apiBaseUrl);
+  const url = `${base}/api/myoclaw/sessions${sp.toString() ? `?${sp.toString()}` : ""}`;
   const res = await fetch(url, {
     method: "GET",
     headers: {
@@ -58,7 +66,8 @@ export async function updateMyoclawJobs(params: {
   apiKey: string;
   updates: JobUpdate[];
 }): Promise<void> {
-  const url = `${params.apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/jobs/update`;
+  const base = normalizeApiBaseUrl(params.apiBaseUrl);
+  const url = `${base}/api/myoclaw/jobs/update`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -80,7 +89,8 @@ export async function importGatewayCronJobs(params: {
   jobs: any[];
   gatewayId?: string;
 }): Promise<{ upserted: number }> {
-  const url = `${params.apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/jobs/import`;
+  const base = normalizeApiBaseUrl(params.apiBaseUrl);
+  const url = `${base}/api/myoclaw/jobs/import`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -101,7 +111,8 @@ export async function fetchMyoclawSync(params: {
   apiBaseUrl: string;
   apiKey: string;
 }): Promise<MyoclawSyncPayload> {
-  const url = `${params.apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/sync`;
+  const base = normalizeApiBaseUrl(params.apiBaseUrl);
+  const url = `${base}/api/myoclaw/sync`;
   const res = await fetch(url, {
     method: "GET",
     headers: {
