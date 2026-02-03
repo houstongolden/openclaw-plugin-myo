@@ -30,14 +30,6 @@ function registerMyoCli(program: any) {
     });
 }
 
-const myoPlugin: OpenClawPluginService = {
-  id: "myo",
-  init: async (api) => {
-    api.registerCli(
-      ({ program }) => registerMyoCli(program),
-      { commands: ["myo"] },
-    );
-  },
-};
-
-export default myoPlugin;
+export default function register(api: Parameters<OpenClawPluginService["init"]>[0]) {
+  api.registerCli(({ program }) => registerMyoCli(program), { commands: ["myo"] });
+}
