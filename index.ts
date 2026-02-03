@@ -1,8 +1,17 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import path from "node:path";
 import os from "node:os";
-import { writeTextFile } from "./src/fs.js";
-import { renderGoalsMd, renderMemoryMd, renderUserMd } from "./src/templates.js";
+import { ensureDir, writeTextFile } from "./src/fs.js";
+import {
+  renderGoalsMd,
+  renderJobsMd,
+  renderMemoryMd,
+  renderProjectMd,
+  renderTasksMd,
+  renderUserMd,
+  slugify,
+} from "./src/templates.js";
+import { fetchMyoclawSync } from "./src/myo-api.js";
 
 type MyoPluginConfig = {
   enabled?: boolean;
@@ -20,13 +29,53 @@ async function runSeedSync(api: OpenClawPluginApi) {
   const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
   const root = expandHome(cfg.rootDir || "~/.myo");
 
-  // v0 sync: seed core files so "fresh install" yields a coherent workspace.
-  await writeTextFile(path.join(root, "USER.md"), renderUserMd({ name: "Houston" }));
-  await writeTextFile(path.join(root, "GOALS.md"), renderGoalsMd());
-  await writeTextFile(path.join(root, "MEMORY.md"), renderMemoryMd());
+  if (!cfg.apiKey) {
+    // v0 fallback: seed minimal files even without API key.
+    await writeTextFile(path.join(root, "USER.md"), renderUserMd({ name: "Houston" }));
+    await writeTextFile(path.join(root, "GOALS.md"), renderGoalsMd());
+    await writeTextFile(path.join(root, "MEMORY.md"), renderMemoryMd());
+    api.logger.info(`[myo] seeded files in ${root} (no apiKey; v0)`);
+    return;
+  }
 
-  api.logger.info(`[myo] seeded files in ${root}`);
+  const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
+  const payload = await fetchMyoclawSync({ apiBaseUrl, apiKey: cfg.apiKey });
+
+  // Root files
+  await writeTextFile(
+    path.join(root, "USER.md"),
+    renderUserMd({ name: payload.user?.full_name || "(unknown)", timezone: payload.user?.timezone || null }),
+  );
+  await writeTextFile(path.join(root, "GOALS.md"), renderGoalsMd());
+  await writeTextFile(path.join(root, "MEMORY.md"), renderMemoryMd({ seed: payload.memorySeed || null }));
+  await writeTextFile(path.join(root, "JOBS.md"), renderJobsMd({ jobs: payload.jobs || [] }));
+
+  // Projects + tasks
+  const projects = payload.projects || [];
+  const tasks = payload.tasks || [];
+
+  await ensureDir(path.join(root, "projects"));
+
+  for (const p of projects) {
+    const slug = slugify(p.name || p.id);
+    const projDir = path.join(root, "projects", slug);
+    await writeTextFile(path.join(projDir, "PROJECT.md"), renderProjectMd(p));
+
+    const projectTasks = tasks.filter((t: any) => t.project_id === p.id);
+    await writeTextFile(path.join(projDir, "TASKS.md"), renderTasksMd({ tasks: projectTasks }));
+  }
+
+  // Unassigned tasks bucket
+  const unassigned = tasks.filter((t: any) => !t.project_id);
+  if (unassigned.length) {
+    const inboxDir = path.join(root, "projects", "inbox");
+    await writeTextFile(path.join(inboxDir, "PROJECT.md"), "# PROJECT\n\nName: Inbox\n");
+    await writeTextFile(path.join(inboxDir, "TASKS.md"), renderTasksMd({ tasks: unassigned }));
+  }
+
+  api.logger.info(`[myo] synced ${projects.length} projects, ${tasks.length} tasks → ${root}`);
 }
+
 
 function registerMyoCli(api: OpenClawPluginApi, program: any) {
   const myo = program.command("myo").description("Connect OpenClaw to Myo (myo.ai)");
