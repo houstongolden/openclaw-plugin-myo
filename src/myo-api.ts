@@ -74,6 +74,29 @@ export async function updateMyoclawJobs(params: {
   }
 }
 
+export async function importGatewayCronJobs(params: {
+  apiBaseUrl: string;
+  apiKey: string;
+  jobs: any[];
+  gatewayId?: string;
+}): Promise<{ upserted: number }> {
+  const url = `${params.apiBaseUrl.replace(/\/$/, "")}/api/myoclaw/jobs/import`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ jobs: params.jobs, gatewayId: params.gatewayId }),
+  });
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok || json?.success === false) {
+    const msg = json?.error?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return { upserted: json?.data?.upserted || 0 };
+}
+
 export async function fetchMyoclawSync(params: {
   apiBaseUrl: string;
   apiKey: string;

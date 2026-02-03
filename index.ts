@@ -15,8 +15,12 @@ import {
   renderSessionsMd,
   slugify,
 } from "./src/templates.js";
-import { fetchMyoclawSessions, fetchMyoclawSync, updateMyoclawJobs } from "./src/myo-api.js";
+import { fetchMyoclawSessions, fetchMyoclawSync, importGatewayCronJobs, updateMyoclawJobs } from "./src/myo-api.js";
 import { watchTasksMd } from "./src/watch.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 type MyoPluginConfig = {
   enabled?: boolean;
@@ -293,6 +297,32 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
         api.logger.error(formatMyoError(err));
         throw err;
       }
+    });
+
+  myo
+    .command("jobs:import")
+    .description("Import local OpenClaw cron jobs into Myo cloud (gateway → DB)")
+    .action(async () => {
+      const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+      if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
+      const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
+
+      const { stdout } = await execFileAsync("openclaw", ["cron", "list", "--json"], {
+        maxBuffer: 10 * 1024 * 1024,
+      });
+
+      const parsed = JSON.parse(String(stdout || "{}")) as any;
+      const jobs = Array.isArray(parsed?.jobs) ? parsed.jobs : [];
+      if (!jobs.length) {
+        api.logger.info("[myo] jobs:import: no local cron jobs found");
+        return;
+      }
+
+      const res = await importGatewayCronJobs({ apiBaseUrl, apiKey: cfg.apiKey, jobs });
+      api.logger.info(`[myo] jobs:import: upserted ${res.upserted} job(s) to cloud`);
+
+      await runSeedSync(api);
+      api.logger.info("[myo] jobs:import: sync complete");
     });
 
   myo
