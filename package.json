@@ -11,7 +11,8 @@
   ],
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "self-test": "./scripts/self-test.sh --prod"
   },
   "dependencies": {
     "openclaw": "^2026.1.29"

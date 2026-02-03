@@ -9,6 +9,15 @@ openclaw gateway restart
 openclaw myo status
 ```
 
+## Self-test (end-to-end)
+```bash
+# PROD
+MYO_API_KEY=... pnpm self-test
+
+# DEV
+MYO_API_KEY=... ./scripts/self-test.sh --dev --base-url https://dev.myo.ai
+```
+
 ## Commands (WIP)
 - `openclaw myo init` — create local `~/.myo` tree
 - `openclaw myo connect --api-key ...` — persist API key into OpenClaw config
@@ -17,6 +26,7 @@ openclaw myo status
 - `openclaw myo sync`
 - `openclaw myo push [--dry-run] [--checked-only]`
 - `openclaw myo watch [--dry-run]` — poll for TASKS.md changes and push
+- `openclaw myo jobs:watch [--dry-run]` — poll Myo jobs and keep OpenClaw cron in sync
 
 ## Status
 Early scaffold. Spec lives in:
