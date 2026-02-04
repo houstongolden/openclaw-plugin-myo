@@ -135,3 +135,110 @@ export async function fetchMyoclawSync(params: {
 
   return json.data as MyoclawSyncPayload;
 }
+
+// ============================================================================
+// Heartbeat API
+// ============================================================================
+
+export type HeartbeatPayload = {
+  version?: string;
+  sessionCount?: number;
+  memoryMB?: number;
+  cpuPercent?: number;
+  uptimeSeconds?: number;
+  channels?: string[];
+  capabilities?: string[];
+  agent?: string;
+};
+
+export type HeartbeatResponse = {
+  success: boolean;
+  serverTime: number;
+  gatewayId: string;
+};
+
+export async function sendHeartbeat(params: {
+  apiBaseUrl: string;
+  apiKey: string;
+  payload?: HeartbeatPayload;
+}): Promise<HeartbeatResponse> {
+  const base = normalizeApiBaseUrl(params.apiBaseUrl);
+  const url = `${base}/api/myoclaw/heartbeat`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params.payload || {}),
+  });
+
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok || json?.success === false) {
+    const msg = json?.error?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return json as HeartbeatResponse;
+}
+
+// ============================================================================
+// Session Sync API
+// ============================================================================
+
+export type SessionSyncPayload = {
+  key: string;
+  title?: string;
+  channel?: string;
+  agent?: string;
+  status?: string;
+  message_count?: number;
+  token_count?: number;
+  last_message_at?: string;
+  messages?: Array<{
+    index: number;
+    role: string;
+    content: string;
+    tool_calls?: unknown[];
+    tool_result?: unknown;
+    input_tokens?: number;
+    output_tokens?: number;
+    timestamp?: string;
+  }>;
+  context?: Record<string, unknown>;
+  pending_tasks?: string[];
+  active_work?: string;
+};
+
+export type SessionSyncResponse = {
+  success: boolean;
+  data: {
+    synced: number;
+    messagesInserted: number;
+  };
+};
+
+export async function syncSessions(params: {
+  apiBaseUrl: string;
+  apiKey: string;
+  sessions: SessionSyncPayload[];
+}): Promise<SessionSyncResponse> {
+  const base = normalizeApiBaseUrl(params.apiBaseUrl);
+  const url = `${base}/api/myoclaw/sessions/sync`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ sessions: params.sessions }),
+  });
+
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok || json?.success === false) {
+    const msg = json?.error?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return json as SessionSyncResponse;
+}

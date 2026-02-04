@@ -15,12 +15,25 @@ import {
   renderSessionsMd,
   slugify,
 } from "./src/templates.js";
-import { fetchMyoclawSessions, fetchMyoclawSync, importGatewayCronJobs, updateMyoclawJobs } from "./src/myo-api.js";
+import {
+  fetchMyoclawSessions,
+  fetchMyoclawSync,
+  importGatewayCronJobs,
+  updateMyoclawJobs,
+  sendHeartbeat,
+  syncSessions,
+  type SessionSyncPayload,
+} from "./src/myo-api.js";
 import { watchTasksMd } from "./src/watch.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { readdir, readFile } from "node:fs/promises";
 
 const execFileAsync = promisify(execFile);
+
+// Global heartbeat interval
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+const HEARTBEAT_INTERVAL_MS = 60_000; // 1 minute
 
 type MyoPluginConfig = {
   enabled?: boolean;
@@ -48,6 +61,211 @@ function formatMyoError(err: any) {
     return [msg, "\nTip: check your network + apiBaseUrl (openclaw myo status)."].join("\n");
   }
   return msg;
+}
+
+// ============================================================================
+// Heartbeat
+// ============================================================================
+
+async function doHeartbeat(api: OpenClawPluginApi) {
+  const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+  if (!cfg.apiKey) return;
+
+  const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
+
+  try {
+    // Gather metrics
+    const memUsage = process.memoryUsage();
+    const uptimeSeconds = Math.floor(process.uptime());
+
+    await sendHeartbeat({
+      apiBaseUrl,
+      apiKey: cfg.apiKey,
+      payload: {
+        version: "1.0.0",
+        sessionCount: 0, // TODO: get actual session count from gateway
+        memoryMB: Math.round(memUsage.heapUsed / 1024 / 1024),
+        uptimeSeconds,
+        capabilities: ["files", "sessions", "tasks", "jobs"],
+        channels: ["cli"],
+      },
+    });
+  } catch (err: any) {
+    // Silently fail heartbeat - don't spam logs
+    if (api.logger.debug) {
+      api.logger.debug(`[myo] heartbeat failed: ${err?.message || err}`);
+    }
+  }
+}
+
+function startHeartbeat(api: OpenClawPluginApi) {
+  if (heartbeatInterval) return;
+
+  const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+  if (!cfg.apiKey) return;
+
+  // Send initial heartbeat
+  doHeartbeat(api).catch(() => {});
+
+  // Start interval
+  heartbeatInterval = setInterval(() => {
+    doHeartbeat(api).catch(() => {});
+  }, HEARTBEAT_INTERVAL_MS);
+
+  api.logger.info(`[myo] heartbeat started (every ${HEARTBEAT_INTERVAL_MS / 1000}s)`);
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
+// ============================================================================
+// Session Sync
+// ============================================================================
+
+async function collectLocalSessions(api: OpenClawPluginApi): Promise<SessionSyncPayload[]> {
+  const sessions: SessionSyncPayload[] = [];
+
+  try {
+    // OpenClaw stores sessions in ~/.openclaw/agents/<agentId>/sessions/
+    const openclawDir = path.join(os.homedir(), ".openclaw");
+    const agentsDir = path.join(openclawDir, "agents");
+
+    let agentDirs: string[] = [];
+    try {
+      agentDirs = await readdir(agentsDir);
+    } catch {
+      return sessions;
+    }
+
+    for (const agentId of agentDirs) {
+      const sessionsDir = path.join(agentsDir, agentId, "sessions");
+      let sessionFiles: string[] = [];
+      try {
+        sessionFiles = await readdir(sessionsDir);
+      } catch {
+        continue;
+      }
+
+      // Only process the most recent 20 sessions
+      const activeFiles = sessionFiles
+        .filter((f) => f.endsWith(".jsonl") && !f.includes(".deleted.") && !f.includes(".lock"))
+        .slice(-20);
+
+      for (const file of activeFiles) {
+        const sessionKey = file.replace(".jsonl", "");
+        const sessionPath = path.join(sessionsDir, file);
+
+        try {
+          const content = await readFile(sessionPath, "utf-8");
+          const lines = content.trim().split("\n").filter(Boolean);
+          const messages: SessionSyncPayload["messages"] = [];
+          let sessionTitle = `Session ${sessionKey.slice(0, 8)}`;
+          let sessionChannel = "cli";
+          let lastTimestamp = new Date().toISOString();
+          let msgIndex = 0;
+
+          for (const line of lines) {
+            try {
+              const entry = JSON.parse(line);
+
+              // Extract session metadata
+              if (entry.type === "session" && entry.id) {
+                lastTimestamp = entry.timestamp || lastTimestamp;
+              }
+
+              // Extract messages (type: "message" with nested message object)
+              if (entry.type === "message" && entry.message) {
+                const msg = entry.message;
+                let textContent = "";
+
+                if (typeof msg.content === "string") {
+                  textContent = msg.content;
+                } else if (Array.isArray(msg.content)) {
+                  // Content is array of content blocks
+                  textContent = msg.content
+                    .filter((c: any) => c.type === "text")
+                    .map((c: any) => c.text)
+                    .join("\n");
+                }
+
+                messages.push({
+                  index: msgIndex++,
+                  role: msg.role,
+                  content: textContent,
+                  tool_calls: msg.tool_calls,
+                  timestamp: entry.timestamp || msg.timestamp,
+                });
+                lastTimestamp = entry.timestamp || lastTimestamp;
+
+                // Use first user message as title hint
+                if (msg.role === "user" && messages.length === 1) {
+                  const firstLine = textContent.split("\n")[0].slice(0, 50);
+                  if (firstLine) sessionTitle = firstLine;
+                }
+              }
+
+              // Extract tool results
+              if (entry.type === "tool_result" && entry.result) {
+                messages.push({
+                  index: msgIndex++,
+                  role: "tool",
+                  content: typeof entry.result === "string" ? entry.result : JSON.stringify(entry.result),
+                  tool_result: entry.result,
+                  timestamp: entry.timestamp,
+                });
+              }
+            } catch {
+              // Skip malformed lines
+            }
+          }
+
+          if (messages.length === 0) continue;
+
+          sessions.push({
+            key: sessionKey,
+            title: sessionTitle,
+            channel: sessionChannel,
+            agent: agentId,
+            status: "active",
+            message_count: messages.length,
+            last_message_at: lastTimestamp,
+            messages: messages.slice(-50), // Only sync last 50 messages
+          });
+        } catch {
+          // Skip unreadable files
+        }
+      }
+    }
+  } catch (err: any) {
+    api.logger.debug?.(`[myo] collectLocalSessions error: ${err?.message || err}`);
+  }
+
+  return sessions;
+}
+
+async function runSessionSync(api: OpenClawPluginApi, opts?: { verbose?: boolean }) {
+  const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+  if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
+
+  const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
+  const sessions = await collectLocalSessions(api);
+
+  if (!sessions.length) {
+    if (opts?.verbose) api.logger.info("[myo] sessions:sync: no local sessions found");
+    return { synced: 0, messagesInserted: 0 };
+  }
+
+  const result = await syncSessions({ apiBaseUrl, apiKey: cfg.apiKey, sessions });
+
+  if (opts?.verbose) {
+    api.logger.info(`[myo] sessions:sync: synced ${result.data.synced} sessions, ${result.data.messagesInserted} messages`);
+  }
+
+  return result.data;
 }
 
 async function runSeedSync(api: OpenClawPluginApi, overrides?: { rootDir?: string }) {
@@ -263,22 +481,115 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
   myo
     .command("status")
     .description("Show Myo connection + sync status")
-    .action(() => {
+    .action(async () => {
       const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
       api.logger.info(`[myo] enabled=${cfg.enabled ?? true}`);
       api.logger.info(`[myo] apiBaseUrl=${cfg.apiBaseUrl ?? "https://myo.ai"}`);
       api.logger.info(`[myo] rootDir=${cfg.rootDir ?? "~/.myo"}`);
       api.logger.info(`[myo] apiKey=${cfg.apiKey ? "set" : "(not set)"}`);
+      api.logger.info(`[myo] heartbeat=${heartbeatInterval ? "running" : "stopped"}`);
+
+      // Send a heartbeat to verify connection
+      if (cfg.apiKey) {
+        try {
+          const result = await sendHeartbeat({
+            apiBaseUrl: cfg.apiBaseUrl || "https://myo.ai",
+            apiKey: cfg.apiKey,
+            payload: { version: "1.0.0" },
+          });
+          api.logger.info(`[myo] connection=online (gatewayId=${result.gatewayId})`);
+        } catch (err: any) {
+          api.logger.info(`[myo] connection=error (${err?.message || err})`);
+        }
+      }
+    });
+
+  myo
+    .command("heartbeat")
+    .option("--start", "Start heartbeat interval", false)
+    .option("--stop", "Stop heartbeat interval", false)
+    .option("--once", "Send a single heartbeat", false)
+    .description("Manage gateway heartbeat (connection status)")
+    .action(async (opts: any) => {
+      if (opts.stop) {
+        stopHeartbeat();
+        api.logger.info("[myo] heartbeat stopped");
+        return;
+      }
+
+      if (opts.start) {
+        startHeartbeat(api);
+        return;
+      }
+
+      // Default: send once
+      try {
+        await doHeartbeat(api);
+        api.logger.info("[myo] heartbeat sent");
+      } catch (err: any) {
+        api.logger.error(formatMyoError(err));
+      }
+    });
+
+  myo
+    .command("sessions:sync")
+    .option("--verbose", "Show detailed output", true)
+    .description("Sync local sessions to myo.ai")
+    .action(async (opts: any) => {
+      try {
+        await runSessionSync(api, { verbose: Boolean(opts.verbose) });
+      } catch (err: any) {
+        api.logger.error(formatMyoError(err));
+        throw err;
+      }
     });
 
   myo
     .command("sync")
     .option("--once", "Run a single sync pass", true)
+    .option("--sessions", "Also sync local sessions to cloud", false)
     .description("Sync projects/tasks/memory/jobs (DB → files)")
+    .action(async (opts: any) => {
+      try {
+        // Pull from cloud
+        await runSeedSync(api);
+        api.logger.info(`[myo] sync complete (pulled from cloud)`);
+
+        // Optionally push sessions to cloud
+        if (opts.sessions) {
+          await runSessionSync(api, { verbose: true });
+        }
+      } catch (err: any) {
+        api.logger.error(formatMyoError(err));
+        throw err;
+      }
+    });
+
+  myo
+    .command("full-sync")
+    .description("Full bidirectional sync: pull from cloud, push local changes, sync sessions")
     .action(async () => {
       try {
+        const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+        if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
+
+        // 1. Send heartbeat to establish connection
+        api.logger.info("[myo] full-sync: sending heartbeat...");
+        await doHeartbeat(api);
+
+        // 2. Pull from cloud (tasks, projects, jobs)
+        api.logger.info("[myo] full-sync: pulling from cloud...");
         await runSeedSync(api);
-        api.logger.info(`[myo] sync complete`);
+
+        // 3. Push local changes (task status, job updates)
+        api.logger.info("[myo] full-sync: pushing local changes...");
+        await runPush(api, { dryRun: false, checkedOnly: false });
+
+        // 4. Sync sessions
+        api.logger.info("[myo] full-sync: syncing sessions...");
+        await runSessionSync(api, { verbose: true });
+
+        api.logger.info("[myo] full-sync complete!");
       } catch (err: any) {
         api.logger.error(formatMyoError(err));
         throw err;
@@ -349,4 +660,18 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
 
 export default function register(api: OpenClawPluginApi) {
   api.registerCli(({ program }) => registerMyoCli(api, program), { commands: ["myo"] });
+
+  // Start heartbeat automatically if apiKey is configured
+  const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+  if (cfg.apiKey && cfg.enabled !== false) {
+    // Delay start slightly to avoid blocking plugin load
+    setTimeout(() => {
+      startHeartbeat(api);
+    }, 1000);
+  }
+
+  // Handle cleanup on process exit
+  process.on("beforeExit", () => {
+    stopHeartbeat();
+  });
 }
