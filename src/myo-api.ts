@@ -110,30 +110,41 @@ export async function importGatewayCronJobs(params: {
 export async function fetchMyoclawSync(params: {
   apiBaseUrl: string;
   apiKey: string;
+  timeoutMs?: number;
 }): Promise<MyoclawSyncPayload> {
   const base = normalizeApiBaseUrl(params.apiBaseUrl);
   const url = `${base}/api/myoclaw/sync`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-  });
 
-  const jsonUnknown: unknown = await res.json().catch(() => ({}));
-  const json = (jsonUnknown && typeof jsonUnknown === "object" ? (jsonUnknown as any) : {}) as any;
+  // Use AbortController for timeout (default 15 seconds)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), params.timeoutMs || 15000);
 
-  const errMsg =
-    typeof json?.error === "string"
-      ? json.error
-      : json?.error?.message || `HTTP ${res.status}`;
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+    });
 
-  if (!res.ok || json?.success === false) {
-    throw new Error(errMsg);
+    const jsonUnknown: unknown = await res.json().catch(() => ({}));
+    const json = (jsonUnknown && typeof jsonUnknown === "object" ? (jsonUnknown as any) : {}) as any;
+
+    const errMsg =
+      typeof json?.error === "string"
+        ? json.error
+        : json?.error?.message || `HTTP ${res.status}`;
+
+    if (!res.ok || json?.success === false) {
+      throw new Error(errMsg);
+    }
+
+    return json.data as MyoclawSyncPayload;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return json.data as MyoclawSyncPayload;
 }
 
 // ============================================================================
@@ -161,25 +172,36 @@ export async function sendHeartbeat(params: {
   apiBaseUrl: string;
   apiKey: string;
   payload?: HeartbeatPayload;
+  timeoutMs?: number;
 }): Promise<HeartbeatResponse> {
   const base = normalizeApiBaseUrl(params.apiBaseUrl);
   const url = `${base}/api/myoclaw/heartbeat`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(params.payload || {}),
-  });
 
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok || json?.success === false) {
-    const msg = json?.error?.message || `HTTP ${res.status}`;
-    throw new Error(msg);
+  // Use AbortController for timeout (default 10 seconds)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), params.timeoutMs || 10000);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(params.payload || {}),
+      signal: controller.signal,
+    });
+
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok || json?.success === false) {
+      const msg = json?.error?.message || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+
+    return json as HeartbeatResponse;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return json as HeartbeatResponse;
 }
 
 // ============================================================================
@@ -222,23 +244,34 @@ export async function syncSessions(params: {
   apiBaseUrl: string;
   apiKey: string;
   sessions: SessionSyncPayload[];
+  timeoutMs?: number;
 }): Promise<SessionSyncResponse> {
   const base = normalizeApiBaseUrl(params.apiBaseUrl);
   const url = `${base}/api/myoclaw/sessions/sync`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ sessions: params.sessions }),
-  });
 
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok || json?.success === false) {
-    const msg = json?.error?.message || `HTTP ${res.status}`;
-    throw new Error(msg);
+  // Use AbortController for timeout (default 30 seconds for large syncs)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), params.timeoutMs || 30000);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ sessions: params.sessions }),
+      signal: controller.signal,
+    });
+
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok || json?.success === false) {
+      const msg = json?.error?.message || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+
+    return json as SessionSyncResponse;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return json as SessionSyncResponse;
 }

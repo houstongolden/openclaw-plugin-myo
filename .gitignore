@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# locks
+package-lock.json
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+
+# macOS
+.DS_Store
+
+# build
+/dist/
+/build/

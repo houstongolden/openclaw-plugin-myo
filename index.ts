@@ -13,6 +13,8 @@ import {
   renderTasksMd,
   renderUserMd,
   renderSessionsMd,
+  renderStartHereMd,
+  renderJobsStarterMd,
   slugify,
 } from "./src/templates.js";
 import {
@@ -28,6 +30,8 @@ import { watchTasksMd } from "./src/watch.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readdir, readFile } from "node:fs/promises";
+import { getTemplatePacks } from "./src/template-packs.js";
+import { scaffoldMissionControl } from "./src/scaffold.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -270,15 +274,22 @@ async function runSessionSync(api: OpenClawPluginApi, opts?: { verbose?: boolean
 
 async function runSeedSync(api: OpenClawPluginApi, overrides?: { rootDir?: string }) {
   const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
-  const root = expandHome(overrides?.rootDir || cfg.rootDir || "~/.myo");
+  const root = expandHome(overrides?.rootDir || cfg.rootDir || "~/clawd/mission-control");
 
   if (!cfg.apiKey) {
     // v0 fallback: seed minimal files even without API key.
+    await writeTextFile(path.join(root, "START_HERE.md"), renderStartHereMd({ rootDir: root }));
     await writeTextFile(path.join(root, "USER.md"), renderUserMd({ name: "Houston" }));
     await writeTextFile(path.join(root, "GOALS.md"), renderGoalsMd());
     await writeTextFile(path.join(root, "MEMORY.md"), renderMemoryMd());
+    await writeTextFile(path.join(root, "JOBS.md"), renderJobsStarterMd({ timezone: "America/Los_Angeles" }));
     await ensureDir(path.join(root, "projects"));
-    api.logger.info(`[myo] seeded files in ${root} (no apiKey; v0)`);
+    // Seed a couple of empty starter project folders
+    await ensureDir(path.join(root, "projects", "inbox"));
+    await writeTextFile(path.join(root, "projects", "inbox", "PROJECT.md"), "# PROJECT\n\nName: Inbox\n\nGoal: Capture → triage → convert to tasks\n");
+    await writeTextFile(path.join(root, "projects", "inbox", "TASKS.md"), "# TASKS\n\n- (add tasks here)\n");
+
+    api.logger.info(`[myo] seeded local-first starter pack in ${root} (no apiKey)`);
     return;
   }
 
@@ -332,7 +343,7 @@ async function runPush(api: OpenClawPluginApi, opts?: { dryRun?: boolean; checke
   const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
   if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
   const apiBaseUrl = cfg.apiBaseUrl || "https://myo.ai";
-  const root = expandHome(cfg.rootDir || "~/.myo");
+  const root = expandHome(cfg.rootDir || "~/clawd/mission-control");
 
   const taskUpdates = await collectTaskUpdatesFromRoot(root, { includeUnchecked: !opts?.checkedOnly });
   const jobUpdates = await collectJobUpdatesFromRoot(root);
@@ -381,7 +392,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
     .command("connect")
     .requiredOption("--api-key <key>", "Myo API key")
     .option("--api-base-url <url>", "Myo API base URL", "https://www.myo.ai")
-    .option("--root-dir <path>", "Root directory for rendered files", "~/.myo")
+    .option("--root-dir <path>", "Root directory for rendered files", "~/clawd/mission-control")
     .description("Connect to myo.ai using an API key (persists into OpenClaw config)")
     .action(async (opts: any) => {
       try {
@@ -401,7 +412,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
                   ...(cfg.plugins?.entries?.myo?.config || {}),
                   apiKey: String(opts.apiKey),
                   apiBaseUrl: String(opts.apiBaseUrl || "https://www.myo.ai"),
-                  rootDir: String(opts.rootDir || "~/.myo"),
+                  rootDir: String(opts.rootDir || "~/clawd/mission-control"),
                 },
               },
             },
@@ -463,18 +474,441 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
 
   myo
     .command("init")
-    .option("--root-dir <path>", "Root directory for rendered files", "~/.myo")
-    .description("Initialize the local ~/.myo file tree (creates base files + folders)")
+    .option("--root-dir <path>", "Root directory for rendered files", "~/clawd/mission-control")
+    .description("Initialize the local Mission Control file tree (creates base files + folders)")
     .action(async (opts: any) => {
       try {
-        const rootDir = expandHome(String(opts.rootDir || "~/.myo"));
+        const rootDir = expandHome(String(opts.rootDir || "~/clawd/mission-control"));
         await ensureDir(rootDir);
-        // `runSeedSync` will do a full sync if apiKey is configured; otherwise it seeds minimal files.
+        // `runSeedSync` will do a full sync if apiKey is configured; otherwise it seeds a local-first starter pack.
         await runSeedSync(api, { rootDir });
         api.logger.info(`[myo] init complete → ${rootDir}`);
       } catch (err: any) {
         api.logger.error(formatMyoError(err));
         throw err;
+      }
+    });
+
+  myo
+    .command("starter-pack")
+    .option("--root-dir <path>", "Root directory for rendered files", "~/clawd/mission-control")
+    .description("(Local-first) Write a starter Mission Control pack into rootDir (safe; overwrites only starter files)")
+    .action(async (opts: any) => {
+      try {
+        const rootDir = expandHome(String(opts.rootDir || "~/clawd/mission-control"));
+        await ensureDir(rootDir);
+        await writeTextFile(path.join(rootDir, "START_HERE.md"), renderStartHereMd({ rootDir }));
+        await writeTextFile(path.join(rootDir, "JOBS.md"), renderJobsStarterMd({ timezone: "America/Los_Angeles" }));
+        await ensureDir(path.join(rootDir, "projects", "inbox"));
+        await writeTextFile(path.join(rootDir, "projects", "inbox", "PROJECT.md"), "# PROJECT\n\nName: Inbox\n\nGoal: Capture → triage → convert to tasks\n");
+        await writeTextFile(path.join(rootDir, "projects", "inbox", "TASKS.md"), "# TASKS\n\n- (add tasks here)\n");
+        api.logger.info(`[myo] starter-pack written → ${rootDir}`);
+      } catch (err: any) {
+        api.logger.error(formatMyoError(err));
+        throw err;
+      }
+    });
+
+  myo
+    .command("templates:list")
+    .option("--tz <iana>", "Timezone (IANA)", "America/Los_Angeles")
+    .description("List available local-first template packs")
+    .action(async (opts: any) => {
+      const tz = String(opts.tz || "America/Los_Angeles");
+      const packs = getTemplatePacks({ tz });
+
+      api.logger.info("[myo] template packs:");
+      for (const p of packs) {
+        api.logger.info(`\n- ${p.id}: ${p.title}`);
+        api.logger.info(`  ${p.description}`);
+        for (const j of p.jobs) {
+          api.logger.info(`  • ${j.name}: ${j.cron} (${j.tz || tz})`);
+        }
+      }
+
+      api.logger.info("\nInstall: openclaw myo templates:install --pack <id> [--yes] [--enable]");
+    });
+
+  myo
+    .command("templates:install")
+    .option("--pack <id>", "Template pack id", "daily-ops")
+    .option("--tz <iana>", "Timezone (IANA)", "America/Los_Angeles")
+    .option("--enable", "Create jobs enabled (default: disabled)", false)
+    .option("--yes", "Actually install (otherwise dry-run)", false)
+    .description("Install a local-first cron template pack")
+    .action(async (opts: any) => {
+      const tz = String(opts.tz || "America/Los_Angeles");
+      const packId = String(opts.pack || "daily-ops");
+      const enable = Boolean(opts.enable);
+      const yes = Boolean(opts.yes);
+
+      const packs = getTemplatePacks({ tz });
+      const pack = packs.find((p) => p.id === packId);
+      if (!pack) {
+        api.logger.error(`[myo] unknown pack: ${packId}`);
+        api.logger.info("Run: openclaw myo templates:list");
+        return;
+      }
+
+      const planned = pack.jobs.map((j) => ({
+        ...j,
+        targetTz: j.tz || tz,
+        desiredEnabled: enable,
+      }));
+
+      // Idempotency: avoid duplicates by name. If duplicates exist, keep the newest and remove the rest.
+      const { stdout: cronListOut } = await execFileAsync("openclaw", ["cron", "list", "--json", "--all"], {
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const parsed = JSON.parse(String(cronListOut || "{}")) as any;
+      const jobs = Array.isArray(parsed?.jobs) ? parsed.jobs : [];
+
+      const existingByName = new Map<string, any[]>();
+      for (const j of jobs) {
+        const name = String(j?.name || "");
+        if (!name) continue;
+        if (!name.startsWith("myo-template-")) continue;
+        const arr = existingByName.get(name) || [];
+        arr.push(j);
+        existingByName.set(name, arr);
+      }
+
+      api.logger.info(`[myo] templates:install pack=${pack.id} (${pack.title})`);
+      api.logger.info("[myo] plan:");
+      for (const p of planned) {
+        const existing = existingByName.get(p.name) || [];
+        api.logger.info(
+          `  - ${p.name}: ${p.cron} (${p.targetTz}) enabled=${p.desiredEnabled}  (${existing.length ? "update" : "add"})`
+        );
+      }
+      api.logger.info("  (This installs OpenClaw cron jobs. It does not require a Myo.ai account.)");
+
+      if (!yes) {
+        api.logger.info("[myo] dry-run. Re-run with: openclaw myo templates:install --yes");
+        return;
+      }
+
+      for (const p of planned) {
+        const existing = (existingByName.get(p.name) || []).slice();
+        // Sort newest first
+        existing.sort((a: any, b: any) => Number(b?.updatedAtMs || b?.createdAtMs || 0) - Number(a?.updatedAtMs || a?.createdAtMs || 0));
+
+        // Dedupe: remove extras
+        const keep = existing[0] || null;
+        const extras = existing.slice(1);
+        for (const j of extras) {
+          api.logger.info(`[myo] templates:install: removing duplicate job ${j.id} (${p.name})`);
+          await execFileAsync("openclaw", ["cron", "rm", String(j.id)], { maxBuffer: 10 * 1024 * 1024 });
+        }
+
+        if (!keep) {
+          // Add new job
+          const args = [
+            "cron",
+            "add",
+            "--name",
+            p.name,
+            "--cron",
+            p.cron,
+            "--tz",
+            p.targetTz,
+            "--session",
+            "main",
+            "--system-event",
+            p.systemEvent,
+          ];
+          if (!p.desiredEnabled) args.push("--disabled");
+          const { stdout, stderr } = await execFileAsync("openclaw", args, { maxBuffer: 10 * 1024 * 1024 });
+          if (stdout) api.logger.info(String(stdout).trim());
+          if (stderr) api.logger.debug?.(String(stderr).trim());
+          continue;
+        }
+
+        // Edit existing job to match desired schedule + payload.
+        const editArgs = [
+          "cron",
+          "edit",
+          String(keep.id),
+          "--name",
+          p.name,
+          "--cron",
+          p.cron,
+          "--tz",
+          p.targetTz,
+          "--system-event",
+          p.systemEvent,
+        ];
+        if (p.desiredEnabled) editArgs.push("--enable");
+        else editArgs.push("--disable");
+
+        const { stdout, stderr } = await execFileAsync("openclaw", editArgs, { maxBuffer: 10 * 1024 * 1024 });
+        if (stdout) api.logger.info(String(stdout).trim());
+        if (stderr) api.logger.debug?.(String(stderr).trim());
+      }
+
+      api.logger.info("[myo] templates:install complete");
+    });
+
+  myo
+    .command("mc:init")
+    .option("--root-dir <path>", "Root directory for Mission Control", "~/clawd/mission-control")
+    .option("--overwrite", "Overwrite existing PROJECT.md/TASKS.md files", false)
+    .description("Initialize a Mission Control scaffold (projects + tasks) for local-first usage")
+    .action(async (opts: any) => {
+      const rootDir = expandHome(String(opts.rootDir || "~/clawd/mission-control"));
+      const overwrite = Boolean(opts.overwrite);
+      const res = await scaffoldMissionControl({ rootDir, overwrite });
+      api.logger.info(`[myo] mc:init created ${res.createdCount} file(s)`);
+      for (const f of res.createdFiles.slice(0, 50)) api.logger.info(`  - ${f}`);
+      if (res.createdFiles.length > 50) api.logger.info(`  … +${res.createdFiles.length - 50} more`);
+    });
+
+  myo
+    .command("templates:status")
+    .option("--tz <iana>", "Timezone (IANA)", "America/Los_Angeles")
+    .option("--json", "Output JSON", false)
+    .description("Show which Myo template jobs are installed/enabled")
+    .action(async (opts: any) => {
+      const tz = String(opts.tz || "America/Los_Angeles");
+      const jsonOut = Boolean(opts.json);
+
+      const packs = getTemplatePacks({ tz });
+      const wanted = new Map<string, { packId: string; cron: string; tz: string }>();
+      for (const p of packs) {
+        for (const j of p.jobs) wanted.set(j.name, { packId: p.id, cron: j.cron, tz: j.tz || tz });
+      }
+
+      const { stdout } = await execFileAsync("openclaw", ["cron", "list", "--json", "--all"], {
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const parsed = JSON.parse(String(stdout || "{}")) as any;
+      const jobs = Array.isArray(parsed?.jobs) ? parsed.jobs : [];
+
+      const installed = jobs
+        .filter((j: any) => wanted.has(String(j?.name || "")))
+        .map((j: any) => {
+          const name = String(j.name);
+          const meta = wanted.get(name)!;
+          return {
+            id: j.id,
+            name,
+            enabled: !!j.enabled,
+            schedule: j.schedule,
+            packId: meta.packId,
+          };
+        });
+
+      const missing = [...wanted.keys()].filter((name) => !installed.some((i) => i.name === name));
+
+      if (jsonOut) {
+        api.logger.info(
+          JSON.stringify(
+            {
+              packs: packs.map((p) => ({ id: p.id, title: p.title, jobs: p.jobs.map((j) => j.name) })),
+              installed,
+              missing,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+
+      api.logger.info("[myo] templates:status");
+      if (!installed.length) {
+        api.logger.info("  installed: (none)");
+        api.logger.info("  tip: openclaw myo templates:install --pack daily-ops --yes");
+        return;
+      }
+
+      const byPack = new Map<string, typeof installed>();
+      for (const i of installed) {
+        const arr = byPack.get(i.packId) || [];
+        arr.push(i);
+        byPack.set(i.packId, arr);
+      }
+
+      for (const [packId, items] of byPack.entries()) {
+        api.logger.info(`\n- ${packId}`);
+        for (const it of items) {
+          api.logger.info(`  • ${it.name}  enabled=${it.enabled}  (id:${it.id})`);
+        }
+      }
+
+      if (missing.length) {
+        api.logger.info(`\nMissing jobs (${missing.length}):`);
+        for (const m of missing.slice(0, 50)) api.logger.info(`  - ${m}`);
+      }
+    });
+
+  myo
+    .command("templates:uninstall")
+    .option("--pack <id>", "Template pack id to uninstall")
+    .option("--all", "Uninstall ALL myo-template-* jobs", false)
+    .option("--yes", "Actually uninstall (otherwise dry-run)", false)
+    .description("Remove installed Myo local-first cron templates")
+    .action(async (opts: any) => {
+      const yes = Boolean(opts.yes);
+      const packId = opts.pack ? String(opts.pack) : null;
+      const all = Boolean(opts.all);
+
+      if (!all && !packId) {
+        api.logger.error("[myo] templates:uninstall requires either --pack <id> or --all (safety)");
+        api.logger.info("Examples:");
+        api.logger.info("  openclaw myo templates:uninstall --pack daily-ops");
+        api.logger.info("  openclaw myo templates:uninstall --all");
+        return;
+      }
+
+      let wantedNames: string[] | null = null;
+      if (packId) {
+        const packs = getTemplatePacks({ tz: "America/Los_Angeles" });
+        const pack = packs.find((p) => p.id === packId);
+        if (!pack) {
+          api.logger.error(`[myo] unknown pack: ${packId}`);
+          api.logger.info("Run: openclaw myo templates:list");
+          return;
+        }
+        wantedNames = pack.jobs.map((j) => j.name);
+      }
+
+      const { stdout } = await execFileAsync("openclaw", ["cron", "list", "--json", "--all"], {
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const parsed = JSON.parse(String(stdout || "{}")) as any;
+      const jobs = Array.isArray(parsed?.jobs) ? parsed.jobs : [];
+
+      const candidates = jobs.filter((j: any) => {
+        const name = String(j?.name || "");
+        if (!name) return false;
+        if (wantedNames) return wantedNames.includes(name);
+        return all && name.startsWith("myo-template-");
+      });
+
+      if (!candidates.length) {
+        api.logger.info("[myo] templates:uninstall: no matching jobs found");
+        return;
+      }
+
+      api.logger.info("[myo] templates:uninstall plan:");
+      for (const j of candidates) {
+        api.logger.info(`  - rm ${j.id} (${j.name})`);
+      }
+
+      if (!yes) {
+        api.logger.info("[myo] dry-run. Re-run with: openclaw myo templates:uninstall --yes");
+        return;
+      }
+
+      for (const j of candidates) {
+        await execFileAsync("openclaw", ["cron", "rm", String(j.id)], { maxBuffer: 10 * 1024 * 1024 });
+      }
+
+      api.logger.info(`[myo] templates:uninstall complete (removed ${candidates.length})`);
+    });
+
+  myo
+    .command("onboarding")
+    .option("--root-dir <path>", "Root directory for Mission Control", "~/clawd/mission-control")
+    .option("--tz <iana>", "Timezone (IANA)", "America/Los_Angeles")
+    .option("--enable", "Install cron templates enabled (default: disabled)", false)
+    .option("--yes", "Actually install cron templates (otherwise dry-run)", false)
+    .description("One-command local-first onboarding: starter pack + mission control + cron templates")
+    .action(async (opts: any) => {
+      const rootDir = expandHome(String(opts.rootDir || "~/clawd/mission-control"));
+      const tz = String(opts.tz || "America/Los_Angeles");
+      const enable = Boolean(opts.enable);
+      const yes = Boolean(opts.yes);
+
+      await ensureDir(rootDir);
+
+      // 1) starter-pack
+      await writeTextFile(path.join(rootDir, "START_HERE.md"), renderStartHereMd({ rootDir }));
+      await writeTextFile(path.join(rootDir, "JOBS.md"), renderJobsStarterMd({ timezone: tz }));
+
+      // 2) mission control scaffold
+      await scaffoldMissionControl({ rootDir, overwrite: false });
+
+      // 3) templates install (daily-ops)
+      api.logger.info(`[myo] onboarding: templates pack=daily-ops tz=${tz} enabled=${enable} dryRun=${!yes}`);
+      const packs = getTemplatePacks({ tz });
+      const pack = packs.find((p) => p.id === "daily-ops");
+      if (pack) {
+        const planned = pack.jobs.map((j) => {
+          const args = [
+            "cron",
+            "add",
+            "--name",
+            j.name,
+            "--cron",
+            j.cron,
+            "--tz",
+            j.tz || tz,
+            "--session",
+            "main",
+            "--system-event",
+            j.systemEvent,
+          ];
+          if (!enable) args.push("--disabled");
+          return args;
+        });
+
+        if (yes) {
+          for (const args of planned) {
+            await execFileAsync("openclaw", args, { maxBuffer: 10 * 1024 * 1024 });
+          }
+        }
+      }
+
+      api.logger.info(`[myo] onboarding complete → ${rootDir}`);
+      api.logger.info("Next: open -a Finder ~/clawd/mission-control && openclaw cron list");
+    });
+
+  myo
+    .command("doctor")
+    .description("Diagnostics for the Myo plugin (local-first + optional cloud sync)")
+    .action(async () => {
+      const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+      api.logger.info("[myo] doctor");
+      api.logger.info(`  enabled=${cfg.enabled ?? true}`);
+      api.logger.info(`  apiBaseUrl=${cfg.apiBaseUrl ?? "https://myo.ai"}`);
+      api.logger.info(`  rootDir=${cfg.rootDir ?? "~/clawd/mission-control"}`);
+      api.logger.info(`  apiKey=${cfg.apiKey ? "set" : "(not set)"}`);
+      api.logger.info(`  heartbeat=${heartbeatInterval ? "running" : "stopped"}`);
+
+      // RootDir existence + key files
+      const root = expandHome(cfg.rootDir || "~/clawd/mission-control");
+      try {
+        await ensureDir(root);
+        api.logger.info(`  rootDirExists=true (${root})`);
+      } catch {
+        api.logger.info(`  rootDirExists=false (${root})`);
+      }
+
+      // Cron availability
+      try {
+        const { stdout } = await execFileAsync("openclaw", ["cron", "status"], { maxBuffer: 10 * 1024 * 1024 });
+        api.logger.info("  cron=status OK");
+        api.logger.debug?.(String(stdout).trim());
+      } catch (err: any) {
+        api.logger.info(`  cron=status error (${err?.message || err})`);
+      }
+
+      // Cloud connectivity (optional)
+      if (cfg.apiKey) {
+        try {
+          const result = await sendHeartbeat({
+            apiBaseUrl: cfg.apiBaseUrl || "https://myo.ai",
+            apiKey: cfg.apiKey,
+            payload: { version: "1.0.0" },
+          });
+          api.logger.info(`  cloud=online (gatewayId=${result.gatewayId})`);
+        } catch (err: any) {
+          api.logger.info(`  cloud=error (${err?.message || err})`);
+        }
+      } else {
+        api.logger.info("  cloud=disabled (no apiKey; local-first mode)");
       }
     });
 
@@ -485,7 +919,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
       const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
       api.logger.info(`[myo] enabled=${cfg.enabled ?? true}`);
       api.logger.info(`[myo] apiBaseUrl=${cfg.apiBaseUrl ?? "https://myo.ai"}`);
-      api.logger.info(`[myo] rootDir=${cfg.rootDir ?? "~/.myo"}`);
+      api.logger.info(`[myo] rootDir=${cfg.rootDir ?? "~/clawd/mission-control"}`);
       api.logger.info(`[myo] apiKey=${cfg.apiKey ? "set" : "(not set)"}`);
       api.logger.info(`[myo] heartbeat=${heartbeatInterval ? "running" : "stopped"}`);
 
@@ -546,19 +980,44 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
 
   myo
     .command("sync")
-    .option("--once", "Run a single sync pass", true)
-    .option("--sessions", "Also sync local sessions to cloud", false)
-    .description("Sync projects/tasks/memory/jobs (DB → files)")
+    .option("--pull-only", "Only pull from cloud (skip push)", false)
+    .option("--push-only", "Only push to cloud (skip pull)", false)
+    .option("--no-sessions", "Skip session sync", false)
+    .option("--verbose", "Show detailed output", true)
+    .description("Bidirectional sync: pull from cloud, push local changes, sync sessions")
     .action(async (opts: any) => {
       try {
-        // Pull from cloud
-        await runSeedSync(api);
-        api.logger.info(`[myo] sync complete (pulled from cloud)`);
+        const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
+        if (!cfg.apiKey) throw new Error("Missing apiKey. Run: openclaw myo connect --api-key ...");
 
-        // Optionally push sessions to cloud
-        if (opts.sessions) {
-          await runSessionSync(api, { verbose: true });
+        const verbose = Boolean(opts.verbose);
+        const pullOnly = Boolean(opts.pullOnly);
+        const pushOnly = Boolean(opts.pushOnly);
+        const syncSessions = opts.sessions !== false;
+
+        // 1. Send heartbeat to establish/verify connection
+        if (verbose) api.logger.info("[myo] sync: verifying connection...");
+        await doHeartbeat(api);
+
+        // 2. Pull from cloud (tasks, projects, jobs, memory)
+        if (!pushOnly) {
+          if (verbose) api.logger.info("[myo] sync: pulling from cloud...");
+          await runSeedSync(api);
         }
+
+        // 3. Push local changes (task status updates, job config changes)
+        if (!pullOnly) {
+          if (verbose) api.logger.info("[myo] sync: pushing local changes...");
+          await runPush(api, { dryRun: false, checkedOnly: false });
+        }
+
+        // 4. Sync sessions (bidirectional - local sessions → cloud)
+        if (syncSessions && !pullOnly) {
+          if (verbose) api.logger.info("[myo] sync: syncing sessions...");
+          await runSessionSync(api, { verbose });
+        }
+
+        api.logger.info("[myo] sync complete!");
       } catch (err: any) {
         api.logger.error(formatMyoError(err));
         throw err;
@@ -644,7 +1103,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
     .description("Watch local TASKS.md for changes and push updates")
     .action(async (opts: any) => {
       const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
-      const root = expandHome(cfg.rootDir || "~/.myo");
+      const root = expandHome(cfg.rootDir || "~/clawd/mission-control");
       const intervalMs = Number(opts.intervalMs || 3000);
 
       await watchTasksMd({
@@ -661,9 +1120,14 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
 export default function register(api: OpenClawPluginApi) {
   api.registerCli(({ program }) => registerMyoCli(api, program), { commands: ["myo"] });
 
-  // Start heartbeat automatically if apiKey is configured
+  // Only start heartbeat when running gateway-related commands (not regular CLI)
+  // Check if this is the gateway process by looking at process.argv
+  const isGatewayProcess = process.argv.some(arg =>
+    arg === "gateway" || arg.includes("gateway") || arg === "daemon"
+  );
+
   const cfg = (api.pluginConfig || {}) as MyoPluginConfig;
-  if (cfg.apiKey && cfg.enabled !== false) {
+  if (cfg.apiKey && cfg.enabled !== false && isGatewayProcess) {
     // Delay start slightly to avoid blocking plugin load
     setTimeout(() => {
       startHeartbeat(api);

@@ -10,7 +10,7 @@
       "enabled": { "type": "boolean", "default": true },
       "apiBaseUrl": { "type": "string", "default": "https://myo.ai" },
       "apiKey": { "type": "string" },
-      "rootDir": { "type": "string", "default": "~/.myo" }
+      "rootDir": { "type": "string", "default": "~/clawd/mission-control" }
     }
   },
   "uiHints": {
