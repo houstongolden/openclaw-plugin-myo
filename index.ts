@@ -1203,34 +1203,49 @@ function mcServerScriptPath() {
   return path.join(__dirname, "src", "mc-server.mjs");
 }
 
+function mcAppDir() {
+  // Myo plugin extension root
+  return path.join(__dirname, "mc-app");
+}
+
 async function startMissionControlDetached(opts: { rootDir: string; host: string; logger?: any }): Promise<string> {
   const host = opts.host;
   const port = await getFreePort(host);
-  const script = mcServerScriptPath();
 
-  // Start detached server.
+  // Start Next.js dev server detached (fast iteration; local-only product).
   const child = spawn(
-    "node",
-    [script, "--root-dir", opts.rootDir, "--host", host, "--port", String(port)],
-    { detached: true, stdio: "ignore" },
+    "pnpm",
+    ["-C", mcAppDir(), "dev", "--hostname", host, "--port", String(port)],
+    {
+      detached: true,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        MYO_MC_ROOT_DIR: opts.rootDir,
+      },
+    },
   );
   child.unref();
 
-  const url = `http://${host}:${port}/?path=START_HERE.md`;
-  opts.logger?.info?.(`[myo] mc server started pid=${(child as any).pid} url=${url}`);
+  const url = `http://${host}:${port}/`;
+  opts.logger?.info?.(`[myo] mc app started pid=${(child as any).pid} url=${url}`);
   return url;
 }
 
 async function startMissionControlForeground(opts: { rootDir: string; host: string; port: number; logger?: any }): Promise<string> {
   const host = opts.host;
   const port = opts.port || (await getFreePort(host));
-  const script = mcServerScriptPath();
-  // Foreground: inherit stdio so URL prints + logs visible.
-  spawn("node", [script, "--root-dir", opts.rootDir, "--host", host, "--port", String(port)], {
+
+  spawn("pnpm", ["-C", mcAppDir(), "dev", "--hostname", host, "--port", String(port)], {
     stdio: "inherit",
+    env: {
+      ...process.env,
+      MYO_MC_ROOT_DIR: opts.rootDir,
+    },
   });
-  const url = `http://${host}:${port}/?path=START_HERE.md`;
-  opts.logger?.info?.(`[myo] mc server url=${url}`);
+
+  const url = `http://${host}:${port}/`;
+  opts.logger?.info?.(`[myo] mc app url=${url}`);
   return url;
 }
 
