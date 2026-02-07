@@ -15,13 +15,19 @@ export default function ActivityPage() {
       try {
         const j = JSON.parse(e.data);
         const incoming: string[] = Array.isArray(j.lines) ? j.lines : [];
-        setLines((prev) => {
-          const next = [...prev, ...incoming].slice(-2000);
-          return next;
-        });
+        setLines((prev) => [...prev, ...incoming].slice(-2000));
       } catch {}
     });
-    return () => ev.close();
+
+    // Persist snapshots periodically so history is rewindable.
+    const t = setInterval(() => {
+      fetch("/api/activity/store?action=pull&lines=800", { cache: "no-store" }).catch(() => null);
+    }, 5000);
+
+    return () => {
+      ev.close();
+      clearInterval(t);
+    };
   }, []);
 
   return (
