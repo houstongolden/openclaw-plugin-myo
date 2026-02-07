@@ -1,16 +1,10 @@
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
-
-async function getProjects(): Promise<string[]> {
-  const res = await fetch("/api/projects", { cache: "no-store" }).catch(() => null);
-  if (!res) return [];
-  const j = await res.json().catch(() => ({}));
-  return Array.isArray(j.projects) ? j.projects : [];
-}
+import { listProjects } from "@/lib/vault";
 
 export default async function ProjectsPage() {
-  const projects = await getProjects();
+  const projects = await listProjects().catch(() => []);
 
   return (
     <AppShell>
