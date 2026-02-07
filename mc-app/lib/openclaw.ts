@@ -13,7 +13,10 @@ export async function openclawCall(call: OpenClawCall) {
   if (call.params !== undefined) {
     args.push("--params", JSON.stringify(call.params));
   }
+  return openclawJson(args);
+}
 
+export async function openclawJson(args: string[]) {
   const { stdout } = await execFileAsync("openclaw", args, {
     maxBuffer: 10 * 1024 * 1024,
   });
