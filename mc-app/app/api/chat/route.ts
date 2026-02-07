@@ -1,18 +1,27 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
-import { openclawCall } from "@/lib/openclaw";
+import { z } from "zod";
+import { openai } from "@ai-sdk/openai";
+import { generateText } from "ai";
 
 function rootDir() {
   return process.env.MYO_MC_ROOT_DIR || path.join(process.env.HOME || "", "clawd", "mission-control");
 }
 
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const project = String(body.project || "");
-  const message = String(body.message || "");
+const Body = z.object({
+  project: z.string().default(""),
+  message: z.string().default(""),
+  messages: z.any().optional(),
+});
 
-  // MVP: load project context (PROJECT.md + TASKS.md), then ask OpenClaw to respond.
+export async function POST(req: Request) {
+  const body = Body.parse(await req.json().catch(() => ({})));
+  const project = body.project;
+  const message = body.message;
+
+  // MVP "chat works": respond via OpenAI using local project context.
+  // (Next step: route to OpenClaw sessions/tools; gateway-call doesn't support chat.completions.)
   let projectMd = "";
   let tasksMd = "";
   try {
@@ -22,23 +31,25 @@ export async function POST(req: Request) {
     tasksMd = await readFile(path.join(rootDir(), "projects", project, "TASKS.md"), "utf-8");
   } catch {}
 
-  const prompt = [
-    `You are an operator-grade assistant inside a local Mission Control UI.`,
-    `The user is chatting in the context of project: ${project}.`,
-    `Rules: do not send external messages without explicit approval.`,
-    `If you propose file edits, describe them clearly and ask for confirmation.`,
-    ``,
-    `PROJECT.md:\n${projectMd || "(missing)"}`,
-    ``,
-    `TASKS.md:\n${tasksMd || "(missing)"}`,
-    ``,
-    `User message:\n${message}`,
+  const sys = [
+    `You are Mission Control — a local-first operator assistant.`,
+    `Be concise and actionable.`,
+    `Never claim you ran tools unless the user explicitly did.`,
+    `If you suggest edits to TASKS.md/PROJECT.md, provide the exact diff snippet.`,
   ].join("\n");
 
-  // Call OpenClaw in a simple way: ask it to respond in plain text.
-  const res = await openclawCall({ method: "chat.completions", params: { prompt } });
+  const ctx = [
+    `Project: ${project}`,
+    `PROJECT.md:\n${projectMd || "(missing)"}`,
+    `TASKS.md:\n${tasksMd || "(missing)"}`,
+  ].join("\n\n");
 
-  // Fallback: if the method isn't available, return the prompt so we can debug.
-  const reply = (res as any)?.text || (res as any)?.result?.text || (res as any)?.response || null;
-  return NextResponse.json({ reply: reply || "(stub) Gateway method not wired yet; next step is to route via sessions_send or a dedicated gateway method.", debug: { usedMethod: "chat.completions" } });
+  const result = await generateText({
+    model: openai("gpt-4o-mini"),
+    system: sys,
+    prompt: `${ctx}\n\nUser: ${message}`,
+    maxOutputTokens: 500,
+  });
+
+  return NextResponse.json({ ok: true, reply: result.text });
 }
