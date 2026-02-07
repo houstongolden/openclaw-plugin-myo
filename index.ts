@@ -27,13 +27,15 @@ import {
   type SessionSyncPayload,
 } from "./src/myo-api.js";
 import { watchTasksMd } from "./src/watch.js";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { readdir, readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { getTemplatePacks } from "./src/template-packs.js";
 import { scaffoldMissionControl } from "./src/scaffold.js";
 
 const execFileAsync = promisify(execFile);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Global heartbeat interval
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -664,6 +666,24 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
     });
 
   myo
+    .command("mc:open")
+    .option("--root-dir <path>", "Root directory for Mission Control", "~/clawd/mission-control")
+    .option("--host <host>", "Host to bind", "127.0.0.1")
+    .option("--port <port>", "Port (0 = random)", "0")
+    .description("Start a lightweight local Mission Control server and open it in your browser")
+    .action(async (opts: any) => {
+      const rootDir = expandHome(String(opts.rootDir || "~/clawd/mission-control"));
+      const host = String(opts.host || "127.0.0.1");
+      const port = Number(opts.port ?? 0);
+      const url = await startMissionControlForeground({ rootDir, host, port, logger: api.logger });
+      api.logger.info(`[myo] Mission Control → ${url}`);
+      await openUrlInBrowser(url, api.logger);
+      api.logger.info("[myo] server is running (Ctrl+C to stop)");
+      // keep process alive
+      await new Promise(() => {});
+    });
+
+  myo
     .command("templates:status")
     .option("--tz <iana>", "Timezone (IANA)", "America/Los_Angeles")
     .option("--json", "Output JSON", false)
@@ -698,7 +718,7 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
           };
         });
 
-      const missing = [...wanted.keys()].filter((name) => !installed.some((i) => i.name === name));
+      const missing = [...wanted.keys()].filter((name) => !installed.some((i: any) => i.name === name));
 
       if (jsonOut) {
         api.logger.info(
@@ -814,12 +834,14 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
     .option("--tz <iana>", "Timezone (IANA)", "America/Los_Angeles")
     .option("--enable", "Install cron templates enabled (default: disabled)", false)
     .option("--yes", "Actually install cron templates (otherwise dry-run)", false)
+    .option("--no-open", "Do not open Mission Control in your browser")
     .description("One-command local-first onboarding: starter pack + mission control + cron templates")
     .action(async (opts: any) => {
       const rootDir = expandHome(String(opts.rootDir || "~/clawd/mission-control"));
       const tz = String(opts.tz || "America/Los_Angeles");
       const enable = Boolean(opts.enable);
       const yes = Boolean(opts.yes);
+      const shouldOpen = opts.open !== false;
 
       await ensureDir(rootDir);
 
@@ -862,7 +884,17 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
       }
 
       api.logger.info(`[myo] onboarding complete → ${rootDir}`);
-      api.logger.info("Next: open -a Finder ~/clawd/mission-control && openclaw cron list");
+      api.logger.info("Next: openclaw myo mc:open --root-dir ~/clawd/mission-control (or open -a Finder ~/clawd/mission-control)");
+
+      if (shouldOpen) {
+        try {
+          const url = await startMissionControlDetached({ rootDir, host: "127.0.0.1", logger: api.logger });
+          api.logger.info(`[myo] Mission Control → ${url}`);
+          await openUrlInBrowser(url, api.logger);
+        } catch (err: any) {
+          api.logger.error(`[myo] failed to open Mission Control in browser: ${err?.message || err}`);
+        }
+      }
     });
 
   myo
@@ -1115,6 +1147,91 @@ function registerMyoCli(api: OpenClawPluginApi, program: any) {
         },
       });
     });
+}
+
+async function openUrlInBrowser(url: string, logger?: any) {
+  const platform = process.platform;
+  try {
+    if (platform === "darwin") {
+      await execFileAsync("open", [url]);
+      return;
+    }
+    if (platform === "win32") {
+      await execFileAsync("cmd", ["/c", "start", "", url]);
+      return;
+    }
+    // linux
+    await execFileAsync("xdg-open", [url]);
+  } catch (err: any) {
+    logger?.info?.(`[myo] open browser failed; here is the URL: ${url}`);
+  }
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function normalizeRelPath(p: string) {
+  // prevent path traversal; keep it relative
+  const cleaned = p.replaceAll("\\", "/");
+  const stripped = cleaned.replace(/^\/+/, "");
+  const normalized = path.posix.normalize(stripped);
+  if (normalized.startsWith("..")) return "";
+  return normalized;
+}
+
+async function getFreePort(host: string): Promise<number> {
+  const net = await import("node:net");
+  return await new Promise<number>((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once("error", reject);
+    srv.listen(0, host, () => {
+      const addr = srv.address();
+      const port = typeof addr === "object" && addr ? addr.port : 0;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+function mcServerScriptPath() {
+  // Resolve relative to this extension folder, not the user's shell cwd.
+  return path.join(__dirname, "src", "mc-server.mjs");
+}
+
+async function startMissionControlDetached(opts: { rootDir: string; host: string; logger?: any }): Promise<string> {
+  const host = opts.host;
+  const port = await getFreePort(host);
+  const script = mcServerScriptPath();
+
+  // Start detached server.
+  const child = spawn(
+    "node",
+    [script, "--root-dir", opts.rootDir, "--host", host, "--port", String(port)],
+    { detached: true, stdio: "ignore" },
+  );
+  child.unref();
+
+  const url = `http://${host}:${port}/?path=START_HERE.md`;
+  opts.logger?.info?.(`[myo] mc server started pid=${(child as any).pid} url=${url}`);
+  return url;
+}
+
+async function startMissionControlForeground(opts: { rootDir: string; host: string; port: number; logger?: any }): Promise<string> {
+  const host = opts.host;
+  const port = opts.port || (await getFreePort(host));
+  const script = mcServerScriptPath();
+  // Foreground: inherit stdio so URL prints + logs visible.
+  spawn("node", [script, "--root-dir", opts.rootDir, "--host", host, "--port", String(port)], {
+    stdio: "inherit",
+  });
+  const url = `http://${host}:${port}/?path=START_HERE.md`;
+  opts.logger?.info?.(`[myo] mc server url=${url}`);
+  return url;
 }
 
 export default function register(api: OpenClawPluginApi) {
