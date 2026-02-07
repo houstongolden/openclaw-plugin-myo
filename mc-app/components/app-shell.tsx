@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sun, Moon, Laptop, LayoutDashboard, FolderKanban, MessageSquare, Settings } from "lucide-react";
+import { Sun, Moon, Laptop, LayoutDashboard, FolderKanban, MessageSquare, Settings, Columns3 } from "lucide-react";
 import { useTheme } from "next-themes";
 
 function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
@@ -71,6 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <ScrollArea className="h-[calc(100vh-58px)] px-3 py-3">
             <div className="space-y-1">
               <NavItem href="/" icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" />
+              <NavItem href="/tasks" icon={<Columns3 className="h-4 w-4" />} label="Tasks" />
               <NavItem href="/projects" icon={<FolderKanban className="h-4 w-4" />} label="Projects" />
               <NavItem href="/chat" icon={<MessageSquare className="h-4 w-4" />} label="Chat" />
               <NavItem href="/settings" icon={<Settings className="h-4 w-4" />} label="Settings" />
