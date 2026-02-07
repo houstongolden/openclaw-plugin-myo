@@ -8,6 +8,8 @@ export type Task = {
   priority: TaskPriority;
   tags: string[];
   project: string;
+  taskKey?: string; // extracted from (id:...)
+  agent?: string | null; // agent:myo etc
   rawLine: string;
 };
 
@@ -24,11 +26,15 @@ export function parseTasksMd(md: string, project: string): Task[] {
     const status = done ? "done" : (extractToken(rest, "status") as TaskStatus) || "inbox";
     const priority = (extractToken(rest, "pri") as TaskPriority) || (extractToken(rest, "priority") as TaskPriority) || "med";
     const tags = extractTags(rest);
+    const agent = extractToken(rest, "agent") || extractToken(rest, "owner") || null;
+    const taskKey = extractId(rest) || undefined;
 
     const title = rest
       .replace(/\s+status:[^\s]+/g, "")
       .replace(/\s+pri:[^\s]+/g, "")
       .replace(/\s+priority:[^\s]+/g, "")
+      .replace(/\s+agent:[^\s]+/g, "")
+      .replace(/\s+owner:[^\s]+/g, "")
       .replace(/\s+#[^\s]+/g, "")
       .trim();
 
@@ -39,6 +45,8 @@ export function parseTasksMd(md: string, project: string): Task[] {
       priority: normalizePriority(priority),
       tags,
       project,
+      taskKey,
+      agent,
       rawLine: line,
     });
   }
@@ -64,6 +72,11 @@ function extractToken(text: string, key: string) {
 function extractTags(text: string) {
   const tags = (text.match(/#[^\s]+/g) || []).map((t) => t.slice(1).toLowerCase());
   return Array.from(new Set(tags));
+}
+
+function extractId(text: string) {
+  const m = text.match(/\(id:([^\)]+)\)/i);
+  return m ? m[1] : null;
 }
 
 function normalizeStatus(s: string): TaskStatus {

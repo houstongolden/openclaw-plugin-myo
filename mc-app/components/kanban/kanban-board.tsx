@@ -58,6 +58,14 @@ export function KanbanBoard({ tasks }: { tasks: Task[] }) {
                           {t.priority}
                         </Badge>
                         <Badge variant="outline">{t.project}</Badge>
+                        {t.agent ? (
+                          <Badge variant="secondary">agent:{t.agent}</Badge>
+                        ) : null}
+                        {t.taskKey ? (
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {t.taskKey}
+                          </Badge>
+                        ) : null}
                         {t.tags.slice(0, 2).map((x) => (
                           <Badge key={x} variant="secondary">
                             #{x}
