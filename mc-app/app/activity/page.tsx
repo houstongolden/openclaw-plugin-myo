@@ -5,6 +5,7 @@ import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { AgentLane } from "@/components/activity/agent-lane";
 
 type Session = {
   sessionKey?: string;
@@ -110,22 +111,19 @@ export default function ActivityPage() {
               >
                 All activity
               </button>
-              {sessionItems.map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() => setActiveKey(s.key)}
-                  className={
-                    "w-full rounded-xl border px-3 py-2 text-left text-sm hover:bg-muted " +
-                    (activeKey === s.key ? "bg-muted" : "")
-                  }
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="truncate font-medium">{s.label}</div>
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  </div>
-                  <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{s.key}</div>
-                </button>
-              ))}
+              {sessionItems.map((s) => {
+                const isActive = lines.slice(-400).some((l) => l.includes(s.key));
+                return (
+                  <AgentLane
+                    key={s.key}
+                    active={isActive}
+                    label={s.label}
+                    sessionKey={s.key}
+                    selected={activeKey === s.key}
+                    onSelect={() => setActiveKey(s.key)}
+                  />
+                );
+              })}
               {!sessionItems.length ? (
                 <div className="text-sm text-muted-foreground">No sessions found (yet).</div>
               ) : null}
