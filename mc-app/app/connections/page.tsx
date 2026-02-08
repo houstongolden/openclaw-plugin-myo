@@ -16,6 +16,7 @@ export default function ConnectionsPage() {
   const [data, setData] = React.useState<any>(null);
   const [agents, setAgents] = React.useState<string[]>([]);
   const [permissions, setPermissions] = React.useState<any>({ allow: {} });
+  const [requests, setRequests] = React.useState<any[]>([]);
 
   async function refresh() {
     const j = await fetch("/api/connections-v2", { cache: "no-store" }).then((r) => r.json());
@@ -23,6 +24,8 @@ export default function ConnectionsPage() {
     setPermissions(j.permissions || { allow: {} });
     const a = await fetch("/api/agents/fs", { cache: "no-store" }).then((r) => r.json());
     setAgents(Array.isArray(a.agents) ? a.agents : []);
+    const r = await fetch("/api/connections-v2/requests", { cache: "no-store" }).then((x) => x.json());
+    setRequests(Array.isArray(r.items) ? r.items : []);
   }
 
   React.useEffect(() => {
@@ -38,20 +41,49 @@ export default function ConnectionsPage() {
     return Boolean(permissions?.allow?.[connectorId]?.[agent]?.all);
   }
 
+  function toolAllowed(connectorId: string, agent: string, tool: string) {
+    const p = permissions?.allow?.[connectorId]?.[agent];
+    if (p?.all) return true;
+    const list: string[] = Array.isArray(p?.tools) ? p.tools : [];
+    return list.includes(tool);
+  }
+
+  async function persist(next: any, toastMsg?: string, desc?: string) {
+    setPermissions(next);
+    await fetch("/api/connections-v2/permissions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ permissions: next }),
+    });
+    if (toastMsg) toast(toastMsg, desc ? { description: desc } : undefined);
+  }
+
   async function toggleAllow(connectorId: string, agent: string, on: boolean) {
     const next = structuredClone(permissions || { allow: {} });
     next.allow = next.allow || {};
     next.allow[connectorId] = next.allow[connectorId] || {};
     next.allow[connectorId][agent] = next.allow[connectorId][agent] || {};
     next.allow[connectorId][agent].all = on;
-    setPermissions(next);
+    if (on) {
+      // when granting all, clear tool list to avoid confusion
+      delete next.allow[connectorId][agent].tools;
+    }
+    await persist(next, on ? "Granted" : "Revoked", `${agent} → ${connectorId}`);
+  }
 
-    await fetch("/api/connections-v2/permissions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ permissions: next }),
-    });
-    toast(on ? "Granted" : "Revoked", { description: `${agent} → ${connectorId}` });
+  async function toggleTool(connectorId: string, agent: string, tool: string, on: boolean) {
+    const next = structuredClone(permissions || { allow: {} });
+    next.allow = next.allow || {};
+    next.allow[connectorId] = next.allow[connectorId] || {};
+    next.allow[connectorId][agent] = next.allow[connectorId][agent] || {};
+    // If specific tools granted, ensure not-all
+    next.allow[connectorId][agent].all = false;
+    const list: string[] = Array.isArray(next.allow[connectorId][agent].tools) ? next.allow[connectorId][agent].tools : [];
+    const set = new Set(list);
+    if (on) set.add(tool);
+    else set.delete(tool);
+    next.allow[connectorId][agent].tools = Array.from(set.values()).sort();
+    await persist(next, on ? "Granted scope" : "Revoked scope", `${agent} → ${connectorId}:${tool}`);
   }
 
   return (
@@ -69,6 +101,7 @@ export default function ConnectionsPage() {
           <TabsList>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
             <TabsTrigger value="permissions">Agent permissions</TabsTrigger>
+            <TabsTrigger value="requests">Requests</TabsTrigger>
           </TabsList>
 
           <TabsContent value="integrations" className="mt-4">
@@ -92,7 +125,7 @@ export default function ConnectionsPage() {
             <Card className="p-4">
               <div className="text-sm font-semibold">Per-agent approvals</div>
               <div className="mt-1 text-sm text-muted-foreground">
-                This is the permissions boundary: which agents can use which connectors. (Next: per-tool scopes, approval requests, audit log.)
+                This is the permissions boundary: which agents can use which connectors and which tool scopes.
               </div>
             </Card>
 
@@ -107,29 +140,113 @@ export default function ConnectionsPage() {
                     <Badge variant={c.status === "connected" ? "default" : "secondary"}>{c.status}</Badge>
                   </div>
 
-                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <div className="mt-3 space-y-2">
                     {agents.map((a) => (
-                      <div key={a} className="flex items-center justify-between rounded-xl border px-3 py-2">
-                        <div className="text-sm">agent:{a}</div>
-                        <Switch
-                          checked={isAllowed(c.id, a)}
-                          onCheckedChange={(v) => toggleAllow(c.id, a, Boolean(v))}
-                        />
+                      <div key={a} className="rounded-xl border p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm">agent:{a}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-xs text-muted-foreground">all</div>
+                            <Switch checked={isAllowed(c.id, a)} onCheckedChange={(v) => toggleAllow(c.id, a, Boolean(v))} />
+                          </div>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(c.tools || []).map((t: string) => (
+                            <button
+                              key={t}
+                              className={
+                                "rounded-full border px-2 py-1 text-xs " +
+                                (toolAllowed(c.id, a, t)
+                                  ? "bg-primary text-primary-foreground border-primary"
+                                  : "bg-background text-muted-foreground hover:text-foreground")
+                              }
+                              onClick={() => toggleTool(c.id, a, t, !toolAllowed(c.id, a, t))}
+                              type="button"
+                              title={`${a} → ${c.id}:${t}`}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                          {!Array.isArray(c.tools) || !c.tools.length ? (
+                            <div className="text-xs text-muted-foreground">No scopes defined for this connector yet.</div>
+                          ) : null}
+                        </div>
                       </div>
                     ))}
                     {!agents.length ? <div className="text-sm text-muted-foreground">No agents found in ~/clawd/agents.</div> : null}
                   </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(c.tools || []).slice(0, 8).map((t: string) => (
-                      <Badge key={t} variant="secondary">
-                        {t}
-                      </Badge>
-                    ))}
-                    {Array.isArray(c.tools) && c.tools.length > 8 ? <Badge variant="outline">+{c.tools.length - 8} more</Badge> : null}
-                  </div>
                 </Card>
               ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="requests" className="mt-4">
+            <Card className="p-4">
+              <div className="text-sm font-semibold">Permission requests</div>
+              <div className="mt-1 text-sm text-muted-foreground">When an agent needs access, it should create a request. Approve here.</div>
+              <div className="mt-3 flex items-center gap-2">
+                <Button variant="outline" onClick={refresh}>Refresh</Button>
+              </div>
+            </Card>
+
+            <div className="mt-3 grid gap-3">
+              {requests.map((r) => (
+                <Card key={r.id} className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold">agent:{r.agentId} → {r.connectorId}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleString()} • {r.reason || ""}</div>
+                    </div>
+                    <Badge variant={r.status === "pending" ? "secondary" : r.status === "approved" ? "default" : "destructive"}>{r.status}</Badge>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(r.tools || []).length ? (r.tools || []).map((t: string) => (
+                      <Badge key={t} variant="outline">{t}</Badge>
+                    )) : <div className="text-xs text-muted-foreground">(requested: all)</div>}
+                  </div>
+
+                  {r.status === "pending" ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        onClick={async () => {
+                          // grant requested scopes (or all)
+                          if ((r.tools || []).length) {
+                            for (const t of r.tools) {
+                              await toggleTool(r.connectorId, r.agentId, t, true);
+                            }
+                          } else {
+                            await toggleAllow(r.connectorId, r.agentId, true);
+                          }
+                          await fetch("/api/connections-v2/requests", {
+                            method: "POST",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify({ kind: "decide", id: r.id, status: "approved" }),
+                          });
+                          await refresh();
+                        }}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          await fetch("/api/connections-v2/requests", {
+                            method: "POST",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify({ kind: "decide", id: r.id, status: "rejected" }),
+                          });
+                          await refresh();
+                        }}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  ) : null}
+                </Card>
+              ))}
+              {!requests.length ? <div className="text-sm text-muted-foreground">No requests yet.</div> : null}
             </div>
           </TabsContent>
         </Tabs>
