@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ConnectorIcon } from "@/components/connections/connector-icons";
 
 export function ConnectorCard({ connector }: { connector: any }) {
   const [open, setOpen] = React.useState(false);
@@ -16,21 +17,28 @@ export function ConnectorCard({ connector }: { connector: any }) {
     <>
       <Card className="p-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold">{connector.name}</div>
-              <Badge variant={statusVariant as any}>{connector.status}</Badge>
+          <div className="flex min-w-0 gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border bg-background">
+              <ConnectorIcon id={connector.id} />
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">{connector.description}</div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Badge variant="outline">via {connector.kind}</Badge>
-              {(connector.provides || []).slice(0, 4).map((p: string) => (
-                <Badge key={p} variant="secondary">
-                  {p}
-                </Badge>
-              ))}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-semibold">{connector.name}</div>
+                <Badge variant={statusVariant as any}>{connector.status}</Badge>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">{connector.description}</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge variant="outline">via {connector.kind}</Badge>
+                {(connector.provides || []).slice(0, 4).map((p: string) => (
+                  <Badge key={p} variant="secondary">
+                    {p}
+                  </Badge>
+                ))}
+              </div>
+              {connector.statusDetail ? (
+                <div className="mt-2 text-xs text-muted-foreground">{connector.statusDetail}</div>
+              ) : null}
             </div>
-            {connector.statusDetail ? <div className="mt-2 text-xs text-muted-foreground">{connector.statusDetail}</div> : null}
           </div>
           <div className="flex flex-col gap-2">
             <Button onClick={() => setOpen(true)}>{connector.status === "connected" ? "Manage" : "Connect"}</Button>
