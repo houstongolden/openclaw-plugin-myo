@@ -16,7 +16,7 @@ export function ConnectorCard({ connector }: { connector: any }) {
   return (
     <>
       <Card className="p-4">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="flex min-w-0 gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl border bg-background">
               <ConnectorIcon id={connector.id} />
@@ -40,7 +40,7 @@ export function ConnectorCard({ connector }: { connector: any }) {
               ) : null}
             </div>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-row gap-2 md:flex-col md:items-stretch">
             <Button onClick={() => setOpen(true)}>{connector.status === "connected" ? "Manage" : "Connect"}</Button>
             <Button variant="outline" onClick={() => setOpen(true)}>
               Permissions

@@ -81,7 +81,7 @@ export default function ConnectionsPage() {
               </div>
             </Card>
 
-            <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-3 grid gap-3 grid-cols-1">
               {filtered.map((c: any) => (
                 <ConnectorCard key={c.id} connector={c} />
               ))}
