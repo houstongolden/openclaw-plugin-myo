@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { ConnectorCard } from "@/components/connections/connector-card";
+import { ConnectorIcon } from "@/components/connections/connector-icons";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -133,9 +134,14 @@ export default function ConnectionsPage() {
               {connectors.map((c: any) => (
                 <Card key={c.id} className="p-4">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">{c.name}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">via {c.kind} • {c.statusDetail}</div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-2xl border bg-background">
+                        <ConnectorIcon id={c.id} />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold">{c.name}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">via {c.kind} • {c.statusDetail}</div>
+                      </div>
                     </div>
                     <Badge variant={c.status === "connected" ? "default" : "secondary"}>{c.status}</Badge>
                   </div>
