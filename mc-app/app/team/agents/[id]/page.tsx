@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -101,7 +102,10 @@ export default function AgentDetailPage() {
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">SOUL.md</div>
-            <Badge variant="outline">editable</Badge>
+            <div className="flex items-center gap-2">
+              <Link href={`/team/agents/${encodeURIComponent(id)}/files`} className="text-xs underline">Browse files</Link>
+              <Badge variant="outline">editable</Badge>
+            </div>
           </div>
           <Textarea value={soul} onChange={(e) => setSoul(e.target.value)} className="mt-3 font-mono text-xs" rows={18} />
         </Card>
