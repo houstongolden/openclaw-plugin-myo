@@ -17,9 +17,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
   const { project } = await params;
 
   const base = path.join(rootDir(), "projects", project);
-  const [projectMd, tasksMd] = await Promise.all([
+  const [projectMd, tasksMd, aiNotesMd] = await Promise.all([
     readFile(path.join(base, "PROJECT.md"), "utf-8").catch(() => ""),
     readFile(path.join(base, "TASKS.md"), "utf-8").catch(() => ""),
+    readFile(path.join(base, "AI_NOTES.md"), "utf-8").catch(() => ""),
   ]);
 
   const tasks = parseTasksMd(tasksMd || "", project);
@@ -35,6 +36,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
         <Tabs defaultValue="tasks">
           <TabsList>
             <TabsTrigger value="tasks">Tasks</TabsTrigger>
+            <TabsTrigger value="list">List</TabsTrigger>
+            <TabsTrigger value="notes">AI Notes</TabsTrigger>
             <TabsTrigger value="docs">Docs</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
           </TabsList>
@@ -55,6 +58,48 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
               <pre className="mt-3 max-h-[50vh] overflow-auto rounded-xl bg-muted p-3 text-xs text-muted-foreground">
                 {tasksMd || "(missing)"}
               </pre>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="list" className="mt-4">
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Tasks (compact)</div>
+                <div className="text-xs text-muted-foreground">Parsed from TASKS.md</div>
+              </div>
+              <div className="mt-4 overflow-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-muted-foreground">
+                      <th className="text-left py-2 pr-3">Task</th>
+                      <th className="text-left py-2 pr-3">Status</th>
+                      <th className="text-left py-2 pr-3">Priority</th>
+                      <th className="text-left py-2 pr-3">Tags</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tasks.map((t) => (
+                      <tr key={t.id} className="border-t border-border/50 align-top">
+                        <td className="py-2 pr-3 font-medium">{t.title}</td>
+                        <td className="py-2 pr-3 text-muted-foreground">{t.status}</td>
+                        <td className="py-2 pr-3 text-muted-foreground">{t.priority}</td>
+                        <td className="py-2 pr-3 text-muted-foreground">
+                          {t.tags?.length ? t.tags.join(", ") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="notes" className="mt-4">
+            <Card className="p-4">
+              <div className="text-sm font-semibold">AI Notes</div>
+              <div className="mt-4 prose prose-neutral dark:prose-invert max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiNotesMd || "(missing)"}</ReactMarkdown>
+              </div>
             </Card>
           </TabsContent>
 
