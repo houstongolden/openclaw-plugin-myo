@@ -8,8 +8,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Task, TaskStatus } from "@/lib/tasks";
 
 const COLS: Array<{ key: TaskStatus; title: string }> = [
-  { key: "inbox", title: "Inbox" },
-  { key: "assigned", title: "Assigned" },
+  { key: "inbox", title: "Backlog" },
+  { key: "assigned", title: "Queued" },
   { key: "in_progress", title: "In Progress" },
   { key: "review", title: "Review" },
   { key: "done", title: "Done" },

@@ -81,7 +81,12 @@ function extractId(text: string) {
 
 function normalizeStatus(s: string): TaskStatus {
   const v = String(s || "").toLowerCase();
+
+  // Aliases (we keep the internal enum stable but accept nicer user-facing words)
   if (v === "in-progress" || v === "inprogress") return "in_progress";
+  if (v === "backlog" || v === "triage" || v === "todo") return "inbox";
+  if (v === "queued" || v === "next" || v === "up_next") return "assigned";
+
   if (v === "inbox" || v === "assigned" || v === "review" || v === "done") return v as TaskStatus;
   if (v === "in_progress") return "in_progress";
   return "inbox";
