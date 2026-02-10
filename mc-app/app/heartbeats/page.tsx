@@ -10,6 +10,42 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 type Item = { id: string; ts: string; text: string };
 
+type HbStatus = { ok: boolean; heartbeatPath: string; heartbeatMd: string; heartbeatJobs: any[] };
+
+function Manage() {
+  const [st, setSt] = React.useState<HbStatus | null>(null);
+
+  async function refresh() {
+    const j = await fetch("/api/heartbeats/status", { cache: "no-store" }).then((r) => r.json());
+    setSt(j);
+  }
+
+  React.useEffect(() => {
+    refresh().catch(() => setSt({ ok: false, heartbeatPath: "", heartbeatMd: "", heartbeatJobs: [] } as any));
+  }, []);
+
+  return (
+    <div className="space-y-3">
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold">HEARTBEAT.md</div>
+            <div className="mt-1 text-xs text-muted-foreground">{st?.heartbeatPath || "—"}</div>
+          </div>
+          <button onClick={() => refresh()} className="rounded-lg border px-3 py-2 text-sm hover:bg-muted">Refresh</button>
+        </div>
+        <pre className="mt-3 max-h-[40vh] overflow-auto rounded-xl bg-muted p-3 text-xs text-muted-foreground">{st?.heartbeatMd || "(missing)"}</pre>
+      </Card>
+
+      <Card className="p-4">
+        <div className="text-sm font-semibold">Scheduled heartbeat-related jobs</div>
+        <div className="mt-2 text-sm text-muted-foreground">Pulled from OpenClaw cron list.</div>
+        <pre className="mt-3 max-h-[40vh] overflow-auto rounded-xl bg-muted p-3 text-xs">{JSON.stringify(st?.heartbeatJobs || [], null, 2)}</pre>
+      </Card>
+    </div>
+  );
+}
+
 function Feed() {
   const [items, setItems] = React.useState<Item[]>([]);
   const [cursor, setCursor] = React.useState(0);
@@ -107,12 +143,7 @@ export default function HeartbeatsPage() {
             <Feed />
           </TabsContent>
           <TabsContent value="manage" className="mt-4">
-            <Card className="p-4">
-              <div className="text-sm font-semibold">Manage Heartbeats</div>
-              <div className="mt-2 text-sm text-muted-foreground">
-                Next: edit HEARTBEAT.md checklist + set schedule/quiet hours + per-check toggles.
-              </div>
-            </Card>
+            <Manage />
           </TabsContent>
         </Tabs>
       </div>
