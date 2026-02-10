@@ -21,7 +21,7 @@ function priColor(p: string) {
   return "default";
 }
 
-export function KanbanBoard({ tasks }: { tasks: Task[] }) {
+export function KanbanBoard({ tasks, showDone = false }: { tasks: Task[]; showDone?: boolean }) {
   const by = React.useMemo(() => {
     const m = new Map<TaskStatus, Task[]>();
     for (const c of COLS) m.set(c.key, []);
@@ -37,9 +37,11 @@ export function KanbanBoard({ tasks }: { tasks: Task[] }) {
     return m;
   }, [tasks]);
 
+  const cols = showDone ? COLS : COLS.filter((c) => c.key !== "done");
+
   return (
-    <div className="grid gap-3 lg:grid-cols-5">
-      {COLS.map((c) => {
+    <div className={`grid gap-3 ${showDone ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+      {cols.map((c) => {
         const items = by.get(c.key) || [];
         return (
           <div key={c.key} className="min-w-0">

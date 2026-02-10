@@ -49,7 +49,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
                 <div className="text-xs text-muted-foreground">Parsed from TASKS.md</div>
               </div>
               <div className="mt-4">
-                <KanbanBoard tasks={tasks as any} />
+                <KanbanBoard tasks={tasks as any} showDone={true} />
               </div>
             </Card>
 

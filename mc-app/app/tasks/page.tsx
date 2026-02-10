@@ -7,12 +7,14 @@ import { listTasks } from "@/lib/vault";
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; showDone?: string }>;
 }) {
   const sp = await searchParams;
   const view = sp.view === "list" ? "list" : "kanban";
+  const showDone = sp.view === "list" ? sp.showDone === "1" : sp.showDone === "1";
 
-  const tasks = await listTasks().catch(() => []);
+  const allTasks = await listTasks().catch(() => []);
+  const tasks = showDone ? allTasks : allTasks.filter((t) => t.status !== "done");
 
   return (
     <AppShell>
@@ -24,13 +26,13 @@ export default async function TasksPage({
           </div>
           <div className="flex items-center gap-2 text-sm">
             <Link
-              href={"/tasks?view=kanban"}
+              href={`/tasks?view=kanban${showDone ? "&showDone=1" : ""}`}
               className={`rounded-lg px-3 py-2 ${view === "kanban" ? "bg-muted" : "hover:bg-muted/50"}`}
             >
               Kanban
             </Link>
             <Link
-              href={"/tasks?view=list"}
+              href={`/tasks?view=list${showDone ? "&showDone=1" : ""}`}
               className={`rounded-lg px-3 py-2 ${view === "list" ? "bg-muted" : "hover:bg-muted/50"}`}
             >
               List
@@ -40,11 +42,28 @@ export default async function TasksPage({
 
         {view === "kanban" ? (
           <Card className="p-4">
-            <KanbanBoard tasks={tasks as any} />
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-semibold">Board</div>
+              <Link
+                href={`/tasks?view=kanban${showDone ? "" : "&showDone=1"}`}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showDone ? "Hide done" : "Show done"}
+              </Link>
+            </div>
+            <KanbanBoard tasks={tasks as any} showDone={showDone} />
           </Card>
         ) : (
           <Card className="p-4">
-            <div className="text-sm font-semibold">Compact list</div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Compact list</div>
+              <Link
+                href={`/tasks?view=list${showDone ? "" : "&showDone=1"}`}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showDone ? "Hide done" : "Show done"}
+              </Link>
+            </div>
             <div className="mt-4 overflow-auto">
               <table className="w-full text-sm">
                 <thead>
