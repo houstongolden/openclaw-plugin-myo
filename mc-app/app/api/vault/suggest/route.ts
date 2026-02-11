@@ -6,7 +6,7 @@ import {
   walkFiles,
   type VaultFileMeta,
   type VaultScope,
-} from "@/lib/vault-files";
+} from "../../../../lib/vault-files";
 
 function scorePath(p: string, q: string) {
   const s = p.toLowerCase();

@@ -5,14 +5,69 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { TaskActionsPanel } from "@/components/chat/task-actions";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
+type SuggestItem = { path: string; size: number; mtimeMs: number; ext: string };
+
 function parseAtFile(text: string) {
-  // naive: detect last "@" token
+  // detect the last "@..." token (used for autocomplete)
   const m = text.match(/@([^\s]*)$/);
   return m ? m[1] : null;
+}
+
+function extractAtFileTokens(text: string) {
+  const tokens = new Set<string>();
+  const re = /(^|\s)@([^\s@]+)(?=$|\s)/g;
+  let m: RegExpExecArray | null = null;
+  while ((m = re.exec(text))) {
+    const p = (m[2] || "").trim();
+    if (p) tokens.add(p);
+  }
+  return Array.from(tokens.values());
+}
+
+async function buildMessageWithSnippets(text: string) {
+  const tokens = extractAtFileTokens(text).slice(0, 6);
+  if (!tokens.length) return text;
+
+  const snippets = await Promise.all(
+    tokens.map(async (file) => {
+      try {
+        const r = await fetch(
+          `/api/vault/snippet?scope=clawd&file=${encodeURIComponent(file)}&maxLines=40&maxChars=8000`
+        );
+        const j = await r.json();
+        if (!j?.ok) return { file, ok: false as const, error: j?.error || "(unknown)" };
+        return {
+          file,
+          ok: true as const,
+          snippet: String(j.snippet || ""),
+          truncated: Boolean(j.truncated),
+        };
+      } catch (e: any) {
+        return { file, ok: false as const, error: e?.message || String(e) };
+      }
+    })
+  );
+
+  const block = snippets
+    .map((s) => {
+      if (!s.ok) return `[@file ${s.file}] (error: ${s.error})`;
+      const tail = s.truncated ? "\n…(truncated)" : "";
+      return `[@file ${s.file}]\n\n\`\`\`\n${s.snippet}${tail}\n\`\`\``;
+    })
+    .join("\n\n");
+
+  return `${text}\n\n---\nReferenced file snippets (auto):\n\n${block}`;
 }
 
 export function ProjectChat({ project }: { project: string }) {
@@ -25,7 +80,7 @@ export function ProjectChat({ project }: { project: string }) {
   ]);
 
   const [input, setInput] = React.useState("");
-  const [suggest, setSuggest] = React.useState<string[]>([]);
+  const [suggest, setSuggest] = React.useState<SuggestItem[]>([]);
   const [loading, setLoading] = React.useState(false);
 
   const [sessions, setSessions] = React.useState<any[]>([]);
@@ -40,17 +95,19 @@ export function ProjectChat({ project }: { project: string }) {
       setSuggest([]);
       return;
     }
-    const url = `/api/files/suggest?q=${encodeURIComponent(q)}&max=8`;
+
+    const url = `/api/vault/suggest?scope=clawd&q=${encodeURIComponent(q)}&max=12`;
     fetch(url)
       .then((r) => r.json())
       .then((j) => {
         if (!alive) return;
-        setSuggest(Array.isArray(j.items) ? j.items : []);
+        setSuggest(Array.isArray(j.items) ? (j.items as SuggestItem[]) : []);
       })
       .catch(() => {
         if (!alive) return;
         setSuggest([]);
       });
+
     return () => {
       alive = false;
     };
@@ -112,10 +169,15 @@ export function ProjectChat({ project }: { project: string }) {
     }
     setHistoryLoading(true);
     try {
-      const r = await fetch(`/api/openclaw/chat/history?sessionKey=${encodeURIComponent(sessionKey)}&limit=${limit}`);
+      const r = await fetch(
+        `/api/openclaw/chat/history?sessionKey=${encodeURIComponent(sessionKey)}&limit=${limit}`
+      );
       const j = await r.json();
       if (!j?.ok) {
-        setMessages((prev) => [...prev, { role: "system", content: `History error: ${j?.error || "(unknown)"}` }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "system", content: `History error: ${j?.error || "(unknown)"}` },
+        ]);
         return;
       }
       const items = Array.isArray(j.messages) ? j.messages : [];
@@ -155,10 +217,12 @@ export function ProjectChat({ project }: { project: string }) {
     setLoading(true);
 
     try {
+      const resolved = await buildMessageWithSnippets(text);
+
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ project, sessionKey, message: text, includeContext }),
+        body: JSON.stringify({ project, sessionKey, message: resolved, includeContext }),
       });
       const j = await r.json();
 
@@ -227,14 +291,11 @@ export function ProjectChat({ project }: { project: string }) {
             </button>
 
             <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={includeContext}
-                onChange={(e) => setIncludeContext(e.target.checked)}
-              />
+              <input type="checkbox" checked={includeContext} onChange={(e) => setIncludeContext(e.target.checked)} />
               include project context
             </label>
           </div>
+
           {messages.map((m, i) => (
             <div key={i} className={m.role === "user" ? "text-right" : "text-left"}>
               <div
@@ -270,19 +331,31 @@ export function ProjectChat({ project }: { project: string }) {
           </div>
 
           {suggest.length ? (
-            <div className="flex flex-wrap gap-2">
-              {suggest.map((s) => (
-                <button
-                  key={s}
-                  className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
-                  onClick={() => {
-                    setInput((prev) => prev.replace(/@([^\s]*)$/, `@${s} `));
-                    setSuggest([]);
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
+            <div className="rounded-md border bg-popover">
+              <Command>
+                <CommandList>
+                  <CommandEmpty>No files found.</CommandEmpty>
+                  <CommandGroup heading="Files">
+                    {suggest.map((s) => (
+                      <CommandItem
+                        key={s.path}
+                        value={s.path}
+                        onSelect={() => {
+                          setInput((prev) => prev.replace(/@([^\s]*)$/, `@${s.path} `));
+                          setSuggest([]);
+                        }}
+                      >
+                        <div className="flex w-full items-center gap-2">
+                          <div className="min-w-0 flex-1 truncate font-mono text-xs">{s.path}</div>
+                          <div className="shrink-0 text-[10px] text-muted-foreground">
+                            {s.ext} · {Math.round((s.size || 0) / 1024)}kb
+                          </div>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
             </div>
           ) : null}
         </div>

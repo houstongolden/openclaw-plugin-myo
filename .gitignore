@@ -10,6 +10,9 @@ pnpm-lock.yaml
 # macOS
 .DS_Store
 
+# local notes
+TASKS.md
+
 # build
 /dist/
 /build/

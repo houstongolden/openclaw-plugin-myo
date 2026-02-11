@@ -11,7 +11,11 @@
   ],
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "mc:dev": "./scripts/mc.sh dev",
+    "mc:prod": "./scripts/mc.sh prod",
+    "mc:watchdog:dev": "./scripts/mc-watchdog.sh dev",
+    "mc:watchdog:prod": "./scripts/mc-watchdog.sh prod"
   },
   "dependencies": {
     "openclaw": "^2026.1.29"

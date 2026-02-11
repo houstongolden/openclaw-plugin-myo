@@ -38,8 +38,39 @@ openclaw myo templates:install --pack inbox-triage
 ## Mission Control scaffold (no account)
 ```bash
 openclaw myo mc:init
-open -a Finder ~/.myo
+open -a Finder ~/clawd/mission-control
 ```
+
+## Mission Control (Standalone mode) — run the app without extension UI
+This repo includes the Mission Control Next.js app in `./mc-app`.
+
+### Dev server
+```bash
+# Uses MYO_MC_ROOT_DIR if set, else reads rootDir from: openclaw myo status
+./scripts/mc.sh dev --host 127.0.0.1 --port 3333
+
+# Or via npm scripts
+pnpm mc:dev
+```
+
+### Production build
+```bash
+./scripts/mc.sh prod --host 127.0.0.1 --port 3333
+# (first run builds; add --no-build to skip)
+
+pnpm mc:prod
+```
+
+### Optional watchdog (auto-restart if port stops listening)
+```bash
+./scripts/mc-watchdog.sh dev --host 127.0.0.1 --port 3333 --interval 5
+
+pnpm mc:watchdog:dev
+```
+
+Notes:
+- Vault root is controlled by `MYO_MC_ROOT_DIR` (or `MYO_VAULT_ROOT_DIR`).
+- Backend calls are made via the `openclaw` CLI (override with `OPENCLAW_BIN=/path/to/openclaw`).
 
 ## One-command onboarding (no account)
 ```bash
