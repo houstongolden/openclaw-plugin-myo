@@ -83,7 +83,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <NavItem href="/heartbeats" icon={<HeartPulse className="h-4 w-4" />} label="Heartbeats" />
               <NavItem href="/jobs" icon={<AlarmClock className="h-4 w-4" />} label="Jobs" />
               <NavItem href="/ops" icon={<Shield className="h-4 w-4" />} label="Ops" />
-              <NavItem href="/ops/worker" icon={<Shield className="h-4 w-4" />} label="Worker" />
               <NavItem href="/team" icon={<Users className="h-4 w-4" />} label="Team" />
               <NavItem href="/skills-dna" icon={<Dna className="h-4 w-4" />} label="Skills DNA" />
               <NavItem href="/connections" icon={<Link2 className="h-4 w-4" />} label="Connections" />

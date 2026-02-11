@@ -1,7 +1,12 @@
-import Link from "next/link";
+"use client";
+
+import * as React from "react";
 import { AppShell } from "@/components/app-shell";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Link from "next/link";
+import { WorkerPanel } from "@/components/ops/worker-panel";
+import { EventsPanel } from "@/components/ops/events-panel";
 
 export default function OpsHome() {
   return (
@@ -10,41 +15,46 @@ export default function OpsHome() {
         <div className="flex items-end justify-between">
           <div>
             <div className="text-2xl font-semibold">Ops</div>
-            <div className="text-sm text-muted-foreground">Closed-loop control plane: proposals → missions → steps → events.</div>
+            <div className="text-sm text-muted-foreground">
+              Closed-loop control plane: proposals → missions → steps → events.
+            </div>
           </div>
           <Badge variant="secondary">MVP</Badge>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <Link href="/ops/proposals">
-            <Card className="p-4 hover:bg-muted">
-              <div className="text-sm font-semibold">Proposals</div>
-              <div className="mt-1 text-xs text-muted-foreground">Create + approve/reject with gates.</div>
-            </Card>
-          </Link>
-          <Link href="/ops/missions">
-            <Card className="p-4 hover:bg-muted">
-              <div className="text-sm font-semibold">Missions</div>
-              <div className="mt-1 text-xs text-muted-foreground">Steps + status + execution trail.</div>
-            </Card>
-          </Link>
-          <Link href="/ops/policies">
-            <Card className="p-4 hover:bg-muted">
-              <div className="text-sm font-semibold">Policies</div>
-              <div className="mt-1 text-xs text-muted-foreground">Caps, gates, reaction matrix.</div>
-            </Card>
-          </Link>
-        </div>
+        <Tabs defaultValue="events">
+          <TabsList>
+            <TabsTrigger value="events">Events</TabsTrigger>
+            <TabsTrigger value="worker">Worker</TabsTrigger>
+            <TabsTrigger value="proposals">Proposals</TabsTrigger>
+            <TabsTrigger value="missions">Missions</TabsTrigger>
+            <TabsTrigger value="policies">Policies</TabsTrigger>
+          </TabsList>
 
-        <Link href="/ops/events">
-          <Card className="p-4 hover:bg-muted">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Events</div>
-              <Badge variant="outline">timeline</Badge>
+          <TabsContent value="events" className="mt-4">
+            <EventsPanel />
+          </TabsContent>
+
+          <TabsContent value="worker" className="mt-4">
+            <WorkerPanel />
+          </TabsContent>
+
+          <TabsContent value="proposals" className="mt-4">
+            <div className="text-sm text-muted-foreground">
+              Open full page: <Link className="underline" href="/ops/proposals">/ops/proposals</Link>
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">The durable activity stream (structured).</div>
-          </Card>
-        </Link>
+          </TabsContent>
+          <TabsContent value="missions" className="mt-4">
+            <div className="text-sm text-muted-foreground">
+              Open full page: <Link className="underline" href="/ops/missions">/ops/missions</Link>
+            </div>
+          </TabsContent>
+          <TabsContent value="policies" className="mt-4">
+            <div className="text-sm text-muted-foreground">
+              Open full page: <Link className="underline" href="/ops/policies">/ops/policies</Link>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </AppShell>
   );
