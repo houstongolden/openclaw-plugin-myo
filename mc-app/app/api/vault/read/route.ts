@@ -3,14 +3,27 @@ import path from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { z } from "zod";
 
-function rootDir() {
+type Scope = "mission-control" | "clawd";
+
+function missionControlRoot() {
   return (
     process.env.MYO_MC_ROOT_DIR ||
     path.join(process.env.HOME || "", "clawd", "mission-control")
   );
 }
 
-const ALLOWED_TOP_LEVEL = new Set([
+function clawdRoot() {
+  return (
+    process.env.MYO_VAULT_ROOT_DIR ||
+    path.join(process.env.HOME || "", "clawd")
+  );
+}
+
+function rootDir(scope: Scope) {
+  return scope === "clawd" ? clawdRoot() : missionControlRoot();
+}
+
+const ALLOWED_TOP_LEVEL_MISSION_CONTROL = new Set([
   "projects",
   "content",
   "ops",
@@ -20,33 +33,52 @@ const ALLOWED_TOP_LEVEL = new Set([
   "activity",
 ]);
 
+const ALLOWED_TOP_LEVEL_CLAWD = new Set([
+  "mission-control",
+  "projects",
+  "agents",
+  "skills",
+  "scripts",
+  "project-context",
+  "memory",
+  "content",
+  "docs",
+]);
+
 const Query = z.object({
   file: z.string().min(1),
+  scope: z.optional(z.enum(["mission-control", "clawd"])).default("mission-control"),
 });
 
-function isSafeRel(rel: string) {
+function isSafeRel(rel: string, scope: Scope) {
   if (rel.includes("..")) return false;
   if (path.isAbsolute(rel)) return false;
   const norm = rel.replace(/\\/g, "/");
   const top = norm.split("/")[0];
-  if (!ALLOWED_TOP_LEVEL.has(top)) return false;
+  const allowed = scope === "clawd" ? ALLOWED_TOP_LEVEL_CLAWD : ALLOWED_TOP_LEVEL_MISSION_CONTROL;
+  if (!allowed.has(top)) return false;
   if (!norm.toLowerCase().endsWith(".md")) return false;
   return true;
 }
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const parsed = Query.safeParse({ file: url.searchParams.get("file") || "" });
+  const parsed = Query.safeParse({
+    file: url.searchParams.get("file") || "",
+    scope: (url.searchParams.get("scope") as any) || "mission-control",
+  });
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
   }
 
   const rel = parsed.data.file;
-  if (!isSafeRel(rel)) {
+  const scope = parsed.data.scope as Scope;
+
+  if (!isSafeRel(rel, scope)) {
     return NextResponse.json({ ok: false, error: "Invalid path" }, { status: 400 });
   }
 
-  const root = rootDir();
+  const root = rootDir(scope);
   const abs = path.join(root, rel);
 
   const st = await stat(abs).catch(() => null);
@@ -59,5 +91,5 @@ export async function GET(req: Request) {
 
   const md = await readFile(abs, "utf-8").catch(() => "");
 
-  return NextResponse.json({ ok: true, file: rel, abs, md });
+  return NextResponse.json({ ok: true, scope, root, file: rel, abs, md });
 }
