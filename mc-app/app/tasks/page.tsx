@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import Link from "next/link";
 import { KanbanBoard } from "@/components/kanban/kanban-board";
 import { listTasks } from "@/lib/vault";
+import { TaskCapture } from "@/components/tasks/task-capture";
 
 export default async function TasksPage({
   searchParams,
@@ -39,6 +40,10 @@ export default async function TasksPage({
             </Link>
           </div>
         </div>
+
+        <Card className="p-4">
+          <TaskCapture />
+        </Card>
 
         {view === "kanban" ? (
           <Card className="p-4">

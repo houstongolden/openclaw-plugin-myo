@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { listTasks } from "@/lib/vault";
+import { Top3Card } from "@/components/now/top3-card";
 
 function priRank(p: string) {
   if (p === "high") return 3;
@@ -39,6 +40,7 @@ export default async function Page() {
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
+          <Top3Card />
           <Card className="p-4">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">In progress</div>

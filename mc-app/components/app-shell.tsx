@@ -8,7 +8,7 @@ import { ActivityIndicator } from "@/components/activity/activity-indicator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sun, Moon, Laptop, LayoutDashboard, FolderKanban, MessageSquare, Settings, Columns3, Activity, HeartPulse, AlarmClock, PenTool, Dna, Plug, Link2, Shield, Users } from "lucide-react";
+import { Sun, Moon, Laptop, LayoutDashboard, FolderKanban, MessageSquare, Settings, Columns3, Activity, HeartPulse, AlarmClock, PenTool, Dna, Plug, Link2, Shield, Users, Library } from "lucide-react";
 import { useTheme } from "next-themes";
 
 function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
@@ -79,10 +79,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <NavItem href="/tasks" icon={<Columns3 className="h-4 w-4" />} label="Tasks" />
               <NavItem href="/projects" icon={<FolderKanban className="h-4 w-4" />} label="Projects" />
               <NavItem href="/content" icon={<PenTool className="h-4 w-4" />} label="Content" />
+              <NavItem href="/vault" icon={<Library className="h-4 w-4" />} label="Vault" />
               <NavItem href="/heartbeats" icon={<HeartPulse className="h-4 w-4" />} label="Heartbeats" />
               <NavItem href="/jobs" icon={<AlarmClock className="h-4 w-4" />} label="Jobs" />
               <NavItem href="/ops" icon={<Shield className="h-4 w-4" />} label="Ops" />
-              <NavItem href="/ops/worker" icon={<Shield className="h-4 w-4" />} label="Worker" />
               <NavItem href="/team" icon={<Users className="h-4 w-4" />} label="Team" />
               <NavItem href="/skills-dna" icon={<Dna className="h-4 w-4" />} label="Skills DNA" />
               <NavItem href="/connections" icon={<Link2 className="h-4 w-4" />} label="Connections" />
