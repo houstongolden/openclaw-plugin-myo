@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import path from "node:path";
 import { stat } from "node:fs/promises";
 import { z } from "zod";
-import { isSafeRel, readSnippet, vaultRootDir, type VaultScope } from "../../../../lib/vault-files";
+import { isSafeRel, readSnippet, vaultRootDir, type VaultScope } from "@/lib/vault";
 
 const Query = z.object({
   file: z.string().min(1),

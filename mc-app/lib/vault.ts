@@ -2,6 +2,43 @@ import path from "node:path";
 import { readdir, stat, readFile } from "node:fs/promises";
 import { parseTasksMd, type Task } from "@/lib/tasks";
 
+// ------------------------------
+// Existing Mission Control vault helpers
+// ------------------------------
+
+export function vaultRoot() {
+  return process.env.MYO_MC_ROOT_DIR || path.join(process.env.HOME || "", "clawd", "mission-control");
+}
+
+export async function listProjects(): Promise<string[]> {
+  const projectsDir = path.join(vaultRoot(), "projects");
+  const dirents = await readdir(projectsDir, { withFileTypes: true });
+  return dirents.filter((d) => d.isDirectory()).map((d) => d.name).sort();
+}
+
+export async function listTasks(project?: string): Promise<Task[]> {
+  const root = vaultRoot();
+  const projectsDir = path.join(root, "projects");
+
+  const projects = project ? [project] : await listProjects();
+  const tasks: Task[] = [];
+
+  for (const p of projects) {
+    try {
+      const md = await readFile(path.join(projectsDir, p, "TASKS.md"), "utf-8");
+      tasks.push(...parseTasksMd(md, p));
+    } catch {
+      // ignore missing
+    }
+  }
+
+  return tasks;
+}
+
+// ------------------------------
+// mc-011: safe file suggest/snippet helpers
+// ------------------------------
+
 export type VaultScope = "mission-control" | "clawd";
 
 export function missionControlRoot() {
@@ -12,19 +49,11 @@ export function missionControlRoot() {
 }
 
 export function clawdRoot() {
-  return (
-    process.env.MYO_VAULT_ROOT_DIR ||
-    path.join(process.env.HOME || "", "clawd")
-  );
+  return process.env.MYO_VAULT_ROOT_DIR || path.join(process.env.HOME || "", "clawd");
 }
 
 export function vaultRootDir(scope: VaultScope) {
   return scope === "clawd" ? clawdRoot() : missionControlRoot();
-}
-
-// Back-compat helper (Mission Control scope)
-export function vaultRoot() {
-  return missionControlRoot();
 }
 
 export const ALLOWED_TOP_LEVEL_MISSION_CONTROL = new Set([
@@ -63,6 +92,7 @@ export const IGNORE_DIRS = new Set([
   ".turbo",
 ]);
 
+// Only include reasonably safe text/code formats. (No .env, .key, .pem, binaries, etc.)
 export const ALLOWED_EXT = new Set([
   ".md",
   ".txt",
@@ -99,7 +129,7 @@ export function isSafeRel(rel: string, scope: VaultScope) {
 }
 
 export type VaultFileMeta = {
-  path: string; // relative (posix)
+  path: string;
   size: number;
   mtimeMs: number;
   ext: string;
@@ -152,29 +182,4 @@ export async function readSnippet(absPath: string, maxLines: number, maxChars: n
   }
 
   return { snippet, truncated, totalLines: lines.length };
-}
-
-export async function listProjects(): Promise<string[]> {
-  const root = path.join(vaultRoot(), "projects");
-  const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
-  return entries
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .filter((name) => !name.startsWith("."))
-    .sort((a, b) => a.localeCompare(b));
-}
-
-export async function listTasks(project?: string): Promise<Task[]> {
-  const root = vaultRoot();
-  const projects = project ? [project] : await listProjects();
-  const out: Task[] = [];
-
-  for (const p of projects) {
-    const fp = path.join(root, "projects", p, "TASKS.md");
-    const md = await readFile(fp, "utf-8").catch(() => "");
-    if (!md.trim()) continue;
-    out.push(...parseTasksMd(md, p));
-  }
-
-  return out;
 }
