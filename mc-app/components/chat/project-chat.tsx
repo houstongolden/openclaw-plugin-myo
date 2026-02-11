@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TaskActionsPanel } from "@/components/chat/task-actions";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -197,6 +198,8 @@ export function ProjectChat({ project }: { project: string }) {
         <Badge variant="secondary">Project</Badge>
         <div className="text-sm font-medium">{project}</div>
       </div>
+
+      <TaskActionsPanel project={project} />
 
       <Card className="p-3">
         <div className="space-y-3">

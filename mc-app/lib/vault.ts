@@ -6,6 +6,11 @@ export function vaultRoot() {
   return process.env.MYO_MC_ROOT_DIR || path.join(process.env.HOME || "", "clawd", "mission-control");
 }
 
+// Alias used by some API routes/helpers
+export function missionControlRoot() {
+  return vaultRoot();
+}
+
 export async function listProjects(): Promise<string[]> {
   const projectsDir = path.join(vaultRoot(), "projects");
   const dirents = await readdir(projectsDir, { withFileTypes: true });
