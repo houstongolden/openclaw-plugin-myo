@@ -8,7 +8,7 @@ import { ActivityIndicator } from "@/components/activity/activity-indicator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sun, Moon, Laptop, LayoutDashboard, FolderKanban, MessageSquare, Settings, Columns3, Activity, HeartPulse, AlarmClock, PenTool, Dna, Plug, Link2, Shield, Users, Library } from "lucide-react";
+import { Sun, Moon, Laptop, LayoutDashboard, FolderKanban, MessageSquare, Settings, Columns3, Activity, HeartPulse, AlarmClock, PenTool, Dna, Plug, Link2, Shield, Users, Library, Brain } from "lucide-react";
 import { useTheme } from "next-themes";
 
 function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
@@ -73,22 +73,60 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <Separator />
           <ScrollArea className="h-[calc(100vh-58px)] px-3 py-3">
-            <div className="space-y-1">
-              <NavItem href="/" icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" />
-              <NavItem href="/activity" icon={<Activity className="h-4 w-4" />} label="Live" />
-              <NavItem href="/tasks" icon={<Columns3 className="h-4 w-4" />} label="Tasks" />
-              <NavItem href="/projects" icon={<FolderKanban className="h-4 w-4" />} label="Projects" />
-              <NavItem href="/content" icon={<PenTool className="h-4 w-4" />} label="Content" />
-              <NavItem href="/vault" icon={<Library className="h-4 w-4" />} label="Vault" />
-              <NavItem href="/heartbeats" icon={<HeartPulse className="h-4 w-4" />} label="Heartbeats" />
-              <NavItem href="/jobs" icon={<AlarmClock className="h-4 w-4" />} label="Jobs" />
-              <NavItem href="/ops" icon={<Shield className="h-4 w-4" />} label="Ops" />
-              <NavItem href="/team" icon={<Users className="h-4 w-4" />} label="Team" />
-              <NavItem href="/skills-dna" icon={<Dna className="h-4 w-4" />} label="Skills DNA" />
-              <NavItem href="/connections" icon={<Link2 className="h-4 w-4" />} label="Connections" />
-              <NavItem href="/plugins" icon={<Plug className="h-4 w-4" />} label="Plugins" />
-              <NavItem href="/chat" icon={<MessageSquare className="h-4 w-4" />} label="Chat" />
-              <NavItem href="/settings" icon={<Settings className="h-4 w-4" />} label="Settings" />
+            <div className="space-y-6">
+              <div>
+                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">Work</div>
+                <div className="space-y-1">
+                  <NavItem href="/" icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" />
+                  <NavItem href="/activity" icon={<Activity className="h-4 w-4" />} label="Live" />
+                  <NavItem href="/tasks" icon={<Columns3 className="h-4 w-4" />} label="Tasks" />
+                  <NavItem href="/projects" icon={<FolderKanban className="h-4 w-4" />} label="Projects" />
+                  <NavItem href="/content" icon={<PenTool className="h-4 w-4" />} label="Content" />
+                  <NavItem href="/vault" icon={<Library className="h-4 w-4" />} label="Vault" />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">Automation</div>
+                <div className="space-y-1">
+                  <NavItem href="/heartbeats" icon={<HeartPulse className="h-4 w-4" />} label="Heartbeats" />
+                  <NavItem href="/jobs" icon={<AlarmClock className="h-4 w-4" />} label="Jobs" />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">Ops</div>
+                <div className="space-y-1">
+                  <NavItem href="/ops" icon={<Shield className="h-4 w-4" />} label="Ops" />
+                  <NavItem href="/team" icon={<Users className="h-4 w-4" />} label="Team" />
+                  <NavItem href="/skills" icon={<Brain className="h-4 w-4" />} label="Skills" />
+                  <NavItem href="/skills/dna" icon={<Dna className="h-4 w-4" />} label="Skills DNA" />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">Integrations</div>
+                <div className="space-y-1">
+                  <NavItem href="/connections" icon={<Link2 className="h-4 w-4" />} label="Connections" />
+                  <NavItem href="/plugins" icon={<Plug className="h-4 w-4" />} label="Plugins" />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">System</div>
+                <div className="space-y-1">
+                  <NavItem href="/chat" icon={<MessageSquare className="h-4 w-4" />} label="Chat" />
+                  <NavItem href="/settings" icon={<Settings className="h-4 w-4" />} label="Settings" />
+                </div>
+              </div>
             </div>
             <Separator className="my-3" />
             <div className="text-xs font-medium text-muted-foreground">Pinned</div>
