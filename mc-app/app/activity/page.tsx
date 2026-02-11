@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { AgentLane } from "@/components/activity/agent-lane";
+import { EventFeed } from "@/components/activity/event-feed";
+import { toEvents } from "@/lib/log-format";
 
 type Session = {
   sessionKey?: string;
@@ -63,9 +65,10 @@ export default function ActivityPage() {
 
   const filtered = React.useMemo(() => {
     if (activeKey === "all") return lines;
-    // best-effort: filter by session key substring in log line
     return lines.filter((l) => l.includes(activeKey));
   }, [lines, activeKey]);
+
+  const events = React.useMemo(() => toEvents(filtered), [filtered]);
 
   const sessionItems = React.useMemo(() => {
     const out = sessions
@@ -132,13 +135,9 @@ export default function ActivityPage() {
 
           <Card className="p-3">
             <ScrollArea className="h-[75vh]">
-              <div className="space-y-1 pr-3 font-mono text-[12px] leading-relaxed">
-                {filtered.map((l, i) => (
-                  <div key={i} className="whitespace-pre-wrap break-words text-muted-foreground">
-                    {l}
-                  </div>
-                ))}
-                {!filtered.length ? <div className="text-sm text-muted-foreground">Waiting for activity…</div> : null}
+              {!events.length ? <div className="p-3 text-sm text-muted-foreground">Waiting for activity…</div> : null}
+              <div className="p-1">
+                <EventFeed events={events} />
               </div>
             </ScrollArea>
           </Card>
