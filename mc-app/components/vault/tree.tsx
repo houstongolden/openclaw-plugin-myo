@@ -63,7 +63,8 @@ export function Tree({
             <Tree key={child.path} node={child} selected={selected} onSelect={onSelect} depth={depth + 1} />
           ))}
 
-                const name = (f.__name || f.path.split("/").slice(-1)[0]) as string;
+          {files.map((f) => {
+            const name = (f.__name || f.path.split("/").slice(-1)[0]) as string;
             const active = selected === f.path;
             return (
               <button
