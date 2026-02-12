@@ -46,7 +46,7 @@ function useDebounced<T>(value: T, ms: number) {
 }
 
 export function VaultBrowser() {
-  const [scope, setScope] = React.useState<Scope>("mission-control");
+  const [scope, setScope] = React.useState<Scope>("clawd");
   const [q, setQ] = React.useState("");
   const dq = useDebounced(q, 150);
   const [loading, setLoading] = React.useState(false);
