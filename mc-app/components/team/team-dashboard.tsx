@@ -31,6 +31,20 @@ type TeamApi = {
   access?: Record<string, string[]>;
 };
 
+type StatusApi = {
+  ok: boolean;
+  status: Record<
+    string,
+    {
+      id: string;
+      now: string[];
+      next: string[];
+      blocked: string[];
+      last5: string[];
+    }
+  >;
+};
+
 type SessionsApi = {
   ok: boolean;
   sessions: any[];
@@ -60,10 +74,14 @@ function groupFor(agent: TeamAgent): { key: string; label: string; icon: React.R
 function AgentRow({
   agent,
   connectors,
+  nowLine,
+  blockedCount,
   onOpen,
 }: {
   agent: TeamAgent;
   connectors: string[];
+  nowLine?: string;
+  blockedCount?: number;
   onOpen: () => void;
 }) {
   const initials = agent.displayName
@@ -96,6 +114,7 @@ function AgentRow({
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             agent:{agent.id} • {agent.role}
+            {nowLine ? <span className="hidden sm:inline"> • now: {nowLine}</span> : null}
           </div>
         </div>
       </div>
@@ -103,13 +122,18 @@ function AgentRow({
       <div className="flex items-center gap-2">
         {connectors.length ? (
           <Badge variant="outline" className="hidden sm:inline-flex">
-            {connectors.length} connectors
+            {connectors.length} access
           </Badge>
         ) : (
           <Badge variant="outline" className="hidden sm:inline-flex opacity-70">
-            no access
+            default
           </Badge>
         )}
+        {blockedCount ? (
+          <Badge variant="destructive" className="hidden sm:inline-flex">
+            blocked: {blockedCount}
+          </Badge>
+        ) : null}
         <div className="text-xs text-muted-foreground opacity-0 transition group-hover:opacity-100">Open</div>
       </div>
     </button>
@@ -118,6 +142,7 @@ function AgentRow({
 
 export function TeamDashboard() {
   const [data, setData] = React.useState<TeamApi | null>(null);
+  const [status, setStatus] = React.useState<StatusApi | null>(null);
   const [sessions, setSessions] = React.useState<SessionsApi | null>(null);
   const [q, setQ] = React.useState("");
 
@@ -125,8 +150,17 @@ export function TeamDashboard() {
   const [openAgent, setOpenAgent] = React.useState<any>(null);
 
   async function refresh() {
-    const j = await fetch("/api/team", { cache: "no-store" }).then((r) => r.json());
+    const [j, s] = await Promise.all([
+      fetch("/api/team", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/team/status", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ ok: false, status: {} })),
+    ]);
     setData(j);
+    setStatus(s);
+  }
+
+  async function grantDefaultAccess() {
+    await fetch("/api/team/default-access", { method: "POST" }).then((r) => r.json());
+    await refresh();
   }
 
   async function refreshSessions() {
@@ -135,7 +169,10 @@ export function TeamDashboard() {
   }
 
   React.useEffect(() => {
-    refresh().catch(() => setData({ ok: false } as any));
+    refresh().catch(() => {
+      setData({ ok: false } as any);
+      setStatus({ ok: false, status: {} } as any);
+    });
     refreshSessions().catch(() => setSessions({ ok: false, sessions: [] } as any));
   }, []);
 
@@ -172,20 +209,25 @@ export function TeamDashboard() {
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-2xl font-semibold">Team / Fleet</div>
-          <div className="text-sm text-muted-foreground">Grouped agent roster with quick access to files + sessions.</div>
+          <div className="text-sm text-muted-foreground">Who’s doing what — now/next/blocked, with receipts.</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-start gap-2 md:flex-row md:items-center">
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search agents…" className="w-[260px]" />
-          <Button variant="outline" onClick={() => { refresh(); refreshSessions(); }}>
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => { refresh(); refreshSessions(); }}>
+              Refresh
+            </Button>
+            <Button variant="secondary" onClick={() => { void grantDefaultAccess(); }}>
+              Grant default access
+            </Button>
+          </div>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {orderedGroupKeys.map((k) => {
           const g = groups.get(k)!;
-          return <GroupPanel key={k} label={g.label} icon={g.icon} agents={g.agents} access={access} onOpen={(id) => setOpenAgentId(id)} />;
+          return <GroupPanel key={k} label={g.label} icon={g.icon} agents={g.agents} access={access} status={status} onOpen={(id) => setOpenAgentId(id)} />;
         })}
         {!orderedGroupKeys.length ? (
           <Card className="p-4">
@@ -316,12 +358,14 @@ function GroupPanel({
   icon,
   agents,
   access,
+  status,
   onOpen,
 }: {
   label: string;
   icon: React.ReactNode;
   agents: TeamAgent[];
   access: Record<string, string[]>;
+  status: StatusApi | null;
   onOpen: (id: string) => void;
 }) {
   const [open, setOpen] = React.useState(true);
@@ -372,6 +416,8 @@ function GroupPanel({
                   key={a.id}
                   agent={a}
                   connectors={access[a.id] || []}
+                  nowLine={status?.status?.[a.id]?.now?.[0]}
+                  blockedCount={(status?.status?.[a.id]?.blocked || []).length}
                   onOpen={() => onOpen(a.id)}
                 />
               ))}
