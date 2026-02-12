@@ -5,6 +5,8 @@ import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AgentLane } from "@/components/activity/agent-lane";
 import { EventFeed } from "@/components/activity/event-feed";
 import { toEvents } from "@/lib/log-format";
@@ -28,6 +30,9 @@ export default function ActivityPage() {
   const [lines, setLines] = React.useState<string[]>([]);
   const [sessions, setSessions] = React.useState<Session[]>([]);
   const [activeKey, setActiveKey] = React.useState<string>("all");
+  const [q, setQ] = React.useState<string>("");
+  const [showGateway, setShowGateway] = React.useState<boolean>(false);
+  const [onlyErrors, setOnlyErrors] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     const ev = new EventSource("/api/activity/stream");
@@ -64,11 +69,20 @@ export default function ActivityPage() {
   }, []);
 
   const filtered = React.useMemo(() => {
-    if (activeKey === "all") return lines;
-    return lines.filter((l) => l.includes(activeKey));
-  }, [lines, activeKey]);
+    const base = activeKey === "all" ? lines : lines.filter((l) => l.includes(activeKey));
+    // Text query filters raw lines first (cheap)
+    const byQ = q ? base.filter((l) => l.toLowerCase().includes(q.toLowerCase())) : base;
+    return byQ;
+  }, [lines, activeKey, q]);
 
-  const events = React.useMemo(() => toEvents(filtered), [filtered]);
+  const events = React.useMemo(() => {
+    const evs = toEvents(filtered);
+    return evs.filter((e) => {
+      if (!showGateway && e.kind === "gateway") return false;
+      if (onlyErrors && e.level !== "error") return false;
+      return true;
+    });
+  }, [filtered, showGateway, onlyErrors]);
 
   const sessionItems = React.useMemo(() => {
     const out = sessions
@@ -85,16 +99,23 @@ export default function ActivityPage() {
   return (
     <AppShell>
       <div className="space-y-4">
-        <div className="flex items-end justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="text-2xl font-semibold">Live</div>
-            <div className="text-sm text-muted-foreground">
-              Intelligent compact stream + per-session filter. Saved to your vault for rewind.
-            </div>
+            <div className="text-sm text-muted-foreground">Readable activity stream with filters. (Gateway noise hidden by default.)</div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary">SSE</Badge>
-            <Badge variant="outline">saved</Badge>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-2">
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search activity…" className="w-[260px]" />
+            <div className="flex items-center gap-2">
+              <Button variant={onlyErrors ? "default" : "outline"} onClick={() => setOnlyErrors((v) => !v)}>
+                Errors
+              </Button>
+              <Button variant={showGateway ? "default" : "outline"} onClick={() => setShowGateway((v) => !v)}>
+                Gateway
+              </Button>
+              <Badge variant="secondary">SSE</Badge>
+              <Badge variant="outline">saved</Badge>
+            </div>
           </div>
         </div>
 

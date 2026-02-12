@@ -26,14 +26,33 @@ export function toEvents(lines: string[]): ActivityEvent[] {
 
     const taskKey = extractTaskKey(line);
 
+    // Gateway / transport noise (keep, but classify so UI can hide by default)
+    if (lower.includes("gateway/ws") || lower.includes("handshake") || lower.includes("unauthorized conn") || lower.includes("openclaw-control-ui")) {
+      const isUnauthorized = lower.includes("unauthorized") || lower.includes("handshake") || lower.includes("auth");
+      out.push({
+        id: stableId(line),
+        ts,
+        kind: "gateway",
+        title: isUnauthorized ? "Gateway auth" : "Gateway",
+        summary: compactGateway(line),
+        details: line,
+        level: isUnauthorized ? "warn" : "info",
+        taskKey,
+      });
+      continue;
+    }
+
     if (lower.includes("cron:")) {
       const title = extractAfter(line, "Cron:") || "Cron";
       out.push({ id: stableId(line), ts, kind: "cron", title: title.trim(), details: line, taskKey });
       continue;
     }
 
-    if (lower.includes("tool") && (lower.includes("exec") || lower.includes("edit") || lower.includes("browser") || lower.includes("read") || lower.includes("write"))) {
-      out.push({ id: stableId(line), ts, kind: "tool", title: "Tool activity", summary: compact(line), details: line, taskKey });
+    if (
+      lower.includes("tool") &&
+      (lower.includes("exec") || lower.includes("edit") || lower.includes("browser") || lower.includes("read") || lower.includes("write"))
+    ) {
+      out.push({ id: stableId(line), ts, kind: "tool", title: "Tool", summary: compact(line), details: line, taskKey });
       continue;
     }
 
@@ -42,7 +61,7 @@ export function toEvents(lines: string[]): ActivityEvent[] {
       continue;
     }
 
-    if (lower.includes("error") || lower.includes("fatal")) {
+    if (lower.includes("error") || lower.includes("fatal") || lower.includes("exception")) {
       out.push({ id: stableId(line), ts, kind: "system", title: "Error", summary: compact(line), details: line, level: "error", taskKey });
       continue;
     }
@@ -51,6 +70,15 @@ export function toEvents(lines: string[]): ActivityEvent[] {
   }
 
   return out.sort((a, b) => b.ts - a.ts).slice(0, 400);
+}
+
+function compactGateway(line: string) {
+  // Prefer a short, human summary over raw JSON blobs.
+  const lower = line.toLowerCase();
+  if (lower.includes("unauthorized")) return "Unauthorized (auth/handshake failed)";
+  const m = line.match(/"cause"\s*:\s*"([^"]+)"/);
+  if (m?.[1]) return `Cause: ${m[1]}`;
+  return compact(line);
 }
 
 function compact(line: string) {
