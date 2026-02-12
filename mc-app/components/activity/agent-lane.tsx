@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
 export function AgentLane({
-  active,
+  active: activeProp,
   label,
   sessionKey,
   selected,
@@ -18,6 +18,7 @@ export function AgentLane({
   onSelect: () => void;
 }) {
   const [mini, setMini] = React.useState<string[]>([]);
+  const [active, setActive] = React.useState<boolean>(activeProp);
 
   React.useEffect(() => {
     let alive = true;
@@ -26,11 +27,15 @@ export function AgentLane({
       .then((r) => r.json())
       .then((j) => {
         if (!alive) return;
-        setMini(Array.isArray(j.lines) ? j.lines : []);
+        const lines = Array.isArray(j.lines) ? j.lines : [];
+        setMini(lines);
+        // Source of truth for "active": if we saw any recent lines for this lane.
+        setActive(lines.length > 0);
       })
       .catch(() => {
         if (!alive) return;
         setMini([]);
+        setActive(false);
       });
     return () => {
       alive = false;
@@ -49,7 +54,9 @@ export function AgentLane({
         >
           <div className="flex items-center justify-between gap-2">
             <div className="truncate font-medium">{label}</div>
-            <span className={"h-2 w-2 rounded-full " + (active ? "bg-emerald-500" : "bg-muted-foreground")} />
+            <span className={"relative h-2 w-2 rounded-full " + (active ? "bg-emerald-500" : "bg-muted-foreground")}>
+              {active ? <span className="absolute inset-0 rounded-full bg-emerald-500/60 animate-ping" /> : null}
+            </span>
           </div>
           <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{sessionKey}</div>
         </button>
