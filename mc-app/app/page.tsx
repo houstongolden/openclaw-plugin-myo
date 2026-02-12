@@ -12,6 +12,16 @@ function priRank(p: string) {
   return 2;
 }
 
+function AgentPill({ agent }: { agent?: string }) {
+  if (!agent) return <span className="text-muted-foreground">unassigned</span>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.18)]" />
+      <span className="font-medium">{agent}</span>
+    </span>
+  );
+}
+
 export default async function Page() {
   const tasks = await listTasks().catch(() => []);
 
@@ -36,35 +46,41 @@ export default async function Page() {
       <div className="space-y-4">
         <div>
           <div className="text-2xl font-semibold">Now</div>
-          <div className="text-sm text-muted-foreground">What’s in progress, what’s next, and what just shipped (from TASKS.md).</div>
+          <div className="text-sm text-muted-foreground">What’s moving, what’s next, and what shipped (from TASKS.md).</div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
           <Top3Card />
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">In progress</div>
-              <Badge variant="secondary">{inProgress.length}</Badge>
-            </div>
-            <div className="mt-2 text-xs text-muted-foreground">Across all projects</div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Queued next</div>
-              <Badge variant="secondary">{queued.length}</Badge>
-            </div>
-            <div className="mt-2 text-xs text-muted-foreground">Ready to pull</div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Recently done</div>
-              <Badge variant="secondary">{recentDone.length}</Badge>
-            </div>
-            <div className="mt-2 text-xs text-muted-foreground">Most recent sample</div>
-          </Card>
+          {inProgress.length ? (
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">In progress</div>
+                <Badge variant="secondary">{inProgress.length}</Badge>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">Across all projects</div>
+            </Card>
+          ) : null}
+          {queued.length ? (
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Queued next</div>
+                <Badge variant="secondary">{queued.length}</Badge>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">Ready to pull</div>
+            </Card>
+          ) : null}
+          {recentDone.length ? (
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Recently done</div>
+                <Badge variant="secondary">{recentDone.length}</Badge>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">Most recent sample</div>
+            </Card>
+          ) : null}
         </div>
 
-        {(unassignedWip.length || queuedNoOwner.length) ? (
+        {unassignedWip.length || queuedNoOwner.length ? (
           <Card className="p-4 border-destructive/30">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">Attention</div>
@@ -84,65 +100,105 @@ export default async function Page() {
                 </div>
               ) : null}
               <div className="pt-2">
-                <Link href="/tasks?view=list&showDone=1" className="text-sm underline">Open tasks list →</Link>
+                <Link href="/tasks?view=list&showDone=1" className="text-sm underline">
+                  Open tasks list →
+                </Link>
               </div>
             </div>
           </Card>
         ) : null}
 
         <div className="grid gap-3 lg:grid-cols-2">
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">In progress</div>
-              <Link href="/tasks?view=list" className="text-xs text-muted-foreground hover:text-foreground">View all</Link>
-            </div>
-            <div className="mt-3 space-y-2">
-              {inProgress.slice(0, 10).map((t) => (
-                <Link key={t.id} href={`/projects/${encodeURIComponent(t.project)}?tab=tasks`} className="block rounded-lg border px-3 py-2 hover:bg-muted">
-                  <div className="text-sm font-medium">{t.title}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {t.project} • pri:{t.priority}{t.agent ? ` • agent:${t.agent}` : ""}
-                  </div>
+          {inProgress.length ? (
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">In progress</div>
+                <Link href="/tasks?view=list" className="text-xs text-muted-foreground hover:text-foreground">
+                  View all
                 </Link>
-              ))}
-              {!inProgress.length ? <div className="text-sm text-muted-foreground">Nothing in progress.</div> : null}
-            </div>
-          </Card>
+              </div>
+              <div className="mt-3 space-y-2">
+                {inProgress.slice(0, 10).map((t) => (
+                  <Link
+                    key={t.id}
+                    href={`/projects/${encodeURIComponent(t.project)}?tab=tasks`}
+                    className={
+                      "block rounded-lg border px-3 py-2 hover:bg-muted " +
+                      (t.agent ? "relative overflow-hidden" : "")
+                    }
+                  >
+                    {t.agent ? (
+                      <div className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-emerald-500/10 to-transparent animate-[shimmer_2.2s_infinite]" />
+                    ) : null}
+                    <div className="text-sm font-medium">{t.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span>{t.project}</span>
+                      <span>•</span>
+                      <span>pri:{t.priority}</span>
+                      <span>•</span>
+                      <span>assignee: <AgentPill agent={t.agent} /></span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </Card>
+          ) : null}
 
-          <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Queued next</div>
-              <Link href="/tasks?view=list" className="text-xs text-muted-foreground hover:text-foreground">View all</Link>
-            </div>
-            <div className="mt-3 space-y-2">
-              {queued.slice(0, 10).map((t) => (
-                <Link key={t.id} href={`/projects/${encodeURIComponent(t.project)}?tab=tasks`} className="block rounded-lg border px-3 py-2 hover:bg-muted">
-                  <div className="text-sm font-medium">{t.title}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {t.project} • pri:{t.priority}{t.agent ? ` • agent:${t.agent}` : ""}
-                  </div>
+          {queued.length ? (
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Queued next</div>
+                <Link href="/tasks?view=list" className="text-xs text-muted-foreground hover:text-foreground">
+                  View all
                 </Link>
-              ))}
-              {!queued.length ? <div className="text-sm text-muted-foreground">Nothing queued.</div> : null}
-            </div>
-          </Card>
+              </div>
+              <div className="mt-3 space-y-2">
+                {queued.slice(0, 10).map((t) => (
+                  <Link
+                    key={t.id}
+                    href={`/projects/${encodeURIComponent(t.project)}?tab=tasks`}
+                    className="block rounded-lg border px-3 py-2 hover:bg-muted"
+                  >
+                    <div className="text-sm font-medium">{t.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span>{t.project}</span>
+                      <span>•</span>
+                      <span>pri:{t.priority}</span>
+                      <span>•</span>
+                      <span>assignee: <AgentPill agent={t.agent} /></span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </Card>
+          ) : null}
         </div>
 
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold">Recently done</div>
-            <Link href="/tasks?view=list&showDone=1" className="text-xs text-muted-foreground hover:text-foreground">Show done list</Link>
-          </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {recentDone.map((t) => (
-              <div key={t.id} className="rounded-lg border px-3 py-2">
-                <div className="text-sm font-medium">{t.title}</div>
-                <div className="mt-1 text-xs text-muted-foreground">{t.project}</div>
-              </div>
-            ))}
-            {!recentDone.length ? <div className="text-sm text-muted-foreground">No completed tasks found yet.</div> : null}
-          </div>
-        </Card>
+        {recentDone.length ? (
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Recently done</div>
+              <Link href="/tasks?view=list&showDone=1" className="text-xs text-muted-foreground hover:text-foreground">
+                Show done list
+              </Link>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {recentDone.map((t) => (
+                <div key={t.id} className="rounded-lg border px-3 py-2">
+                  <div className="text-sm font-medium">{t.title}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{t.project}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ) : null}
+
+        {!inProgress.length && !queued.length && !recentDone.length ? (
+          <Card className="p-4">
+            <div className="text-sm font-semibold">All clear</div>
+            <div className="mt-1 text-sm text-muted-foreground">No tasks found yet. Add TASKS.md in a project to light this up.</div>
+          </Card>
+        ) : null}
       </div>
     </AppShell>
   );

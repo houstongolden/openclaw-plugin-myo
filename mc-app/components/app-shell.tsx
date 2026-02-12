@@ -7,8 +7,14 @@ import { Button } from "@/components/ui/button";
 import { ActivityIndicator } from "@/components/activity/activity-indicator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sun, Moon, Laptop, LayoutDashboard, FolderKanban, MessageSquare, Settings, Columns3, Activity, HeartPulse, AlarmClock, PenTool, Dna, Plug, Link2, Shield, Users, Library, Brain, Blocks, User } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Sun, Moon, Laptop, Activity, FolderKanban, Users, Library, User, Settings } from "lucide-react";
 import { useTheme } from "next-themes";
 
 function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
@@ -73,76 +79,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <Separator />
           <ScrollArea className="h-[calc(100vh-58px)] px-3 py-3">
-            <div className="space-y-6">
-              <div>
-                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">Work</div>
-                <div className="space-y-1">
-                  <NavItem href="/you" icon={<User className="h-4 w-4" />} label="You" />
-                  <NavItem href="/" icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" />
-                  <NavItem href="/activity" icon={<Activity className="h-4 w-4" />} label="Live" />
-                  <NavItem href="/office" icon={<Blocks className="h-4 w-4" />} label="Office" />
-                  <NavItem href="/tasks" icon={<Columns3 className="h-4 w-4" />} label="Tasks" />
-                  <NavItem href="/projects" icon={<FolderKanban className="h-4 w-4" />} label="Projects" />
-                  <NavItem href="/content" icon={<PenTool className="h-4 w-4" />} label="Content" />
-                  <NavItem href="/vault" icon={<Library className="h-4 w-4" />} label="Vault" />
-                </div>
-              </div>
-
-              <Separator />
-
-              <div>
-                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">Automation</div>
-                <div className="space-y-1">
-                  <NavItem href="/heartbeats" icon={<HeartPulse className="h-4 w-4" />} label="Heartbeats" />
-                  <NavItem href="/jobs" icon={<AlarmClock className="h-4 w-4" />} label="Jobs" />
-                </div>
-              </div>
-
-              <Separator />
-
-              <div>
-                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">Ops</div>
-                <div className="space-y-1">
-                  <NavItem href="/ops" icon={<Shield className="h-4 w-4" />} label="Ops" />
-                  <NavItem href="/team" icon={<Users className="h-4 w-4" />} label="Team" />
-                  <NavItem href="/skills" icon={<Brain className="h-4 w-4" />} label="Skills" />
-                  <NavItem href="/skills/dna" icon={<Dna className="h-4 w-4" />} label="Skills DNA" />
-                </div>
-              </div>
-
-              <Separator />
-
-              <div>
-                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">Integrations</div>
-                <div className="space-y-1">
-                  <NavItem href="/connections" icon={<Link2 className="h-4 w-4" />} label="Connections" />
-                  <NavItem href="/plugins" icon={<Plug className="h-4 w-4" />} label="Plugins" />
-                </div>
-              </div>
-
-              <Separator />
-
-              <div>
-                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">System</div>
-                <div className="space-y-1">
-                  <NavItem href="/chat" icon={<MessageSquare className="h-4 w-4" />} label="Chat" />
-                  <NavItem href="/settings" icon={<Settings className="h-4 w-4" />} label="Settings" />
-                </div>
-              </div>
+            <div className="space-y-1">
+              <NavItem href="/you" icon={<User className="h-4 w-4" />} label="You" />
+              <NavItem href="/live" icon={<Activity className="h-4 w-4" />} label="Live" />
+              <NavItem href="/projects" icon={<FolderKanban className="h-4 w-4" />} label="Projects" />
+              <NavItem href="/team" icon={<Users className="h-4 w-4" />} label="Team" />
+              <NavItem href="/vault" icon={<Library className="h-4 w-4" />} label="Vault" />
             </div>
-            <Separator className="my-3" />
+
+            <Separator className="my-4" />
+
             <div className="text-xs font-medium text-muted-foreground">Pinned</div>
             <div className="mt-2 space-y-1">
-              <Link href="/projects/inbox" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">Inbox</Link>
-              <Link href="/projects/myo-ai" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">Myo.ai</Link>
-              <Link href="/projects/fitness" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">Fitness</Link>
+              <Link href="/projects/inbox" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">
+                Inbox
+              </Link>
+              <Link href="/projects/myo-ai" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">
+                Myo.ai
+              </Link>
+              <Link href="/projects/fitness" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">
+                Fitness
+              </Link>
             </div>
 
             <div className="mt-4">
               <Separator className="my-3" />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button type="button" className="flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left hover:bg-muted">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left hover:bg-muted"
+                  >
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500" />
                       <div>
@@ -155,14 +122,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem asChild>
-                    <Link href="/you">You</Link>
+                    <Link href="/you">
+                      <User className="mr-2 h-4 w-4" /> You
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/settings">Settings</Link>
+                    <Link href="/settings">
+                      <Settings className="mr-2 h-4 w-4" /> Settings
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href="/vault">Open vault</Link>
+                    <Link href="/vault">
+                      <Library className="mr-2 h-4 w-4" /> Open vault
+                    </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
