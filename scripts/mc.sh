@@ -49,7 +49,7 @@ REPO_DIR=$(cd "${SCRIPT_DIR}/.." && pwd)
 MC_APP_DIR="${REPO_DIR}/mc-app"
 
 expand_path() {
-  python3 - <<PY
+  python3 - "$1" <<'PY'
 import os,sys
 print(os.path.expanduser(sys.argv[1]))
 PY
