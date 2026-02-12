@@ -21,21 +21,22 @@ export function AgentLane({
   const [active, setActive] = React.useState<boolean>(activeProp);
 
   React.useEffect(() => {
+    setActive(activeProp);
+  }, [activeProp]);
+
+  React.useEffect(() => {
     let alive = true;
     if (!sessionKey) return;
+    // Mini preview: best-effort—grab a few recent lines that mention the session key.
     fetch(`/api/activity/agent-summary?key=${encodeURIComponent(sessionKey)}&max=3`, { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => {
         if (!alive) return;
-        const lines = Array.isArray(j.lines) ? j.lines : [];
-        setMini(lines);
-        // Source of truth for "active": if we saw any recent lines for this lane.
-        setActive(lines.length > 0);
+        setMini(Array.isArray(j.lines) ? j.lines : []);
       })
       .catch(() => {
         if (!alive) return;
         setMini([]);
-        setActive(false);
       });
     return () => {
       alive = false;

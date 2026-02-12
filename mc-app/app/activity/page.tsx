@@ -89,7 +89,11 @@ export default function ActivityPage() {
       .map((s) => {
         const key = getSessionKey(s as any);
         const label = (s as any).label || (s as any).name || (s as any).agentId || (s as any).agent_id || key;
-        return { key, label, raw: s };
+        const ageMs = typeof (s as any).ageMs === "number" ? Number((s as any).ageMs) : null;
+        const updatedAt = typeof (s as any).updatedAt === "string" ? Date.parse((s as any).updatedAt) : null;
+        const updatedAgeMs = updatedAt && Number.isFinite(updatedAt) ? Date.now() - updatedAt : null;
+        const isActive = (ageMs != null && ageMs < 120_000) || (updatedAgeMs != null && updatedAgeMs < 120_000);
+        return { key, label, raw: s, isActive: !!isActive };
       })
       .filter((x) => x.key)
       .slice(0, 20);
@@ -135,19 +139,16 @@ export default function ActivityPage() {
               >
                 All activity
               </button>
-              {sessionItems.map((s) => {
-                const isActive = lines.slice(-400).some((l) => l.includes(s.key));
-                return (
-                  <AgentLane
-                    key={s.key}
-                    active={isActive}
-                    label={s.label}
-                    sessionKey={s.key}
-                    selected={activeKey === s.key}
-                    onSelect={() => setActiveKey(s.key)}
-                  />
-                );
-              })}
+              {sessionItems.map((s) => (
+                <AgentLane
+                  key={s.key}
+                  active={s.isActive}
+                  label={s.label}
+                  sessionKey={s.key}
+                  selected={activeKey === s.key}
+                  onSelect={() => setActiveKey(s.key)}
+                />
+              ))}
               {!sessionItems.length ? (
                 <div className="text-sm text-muted-foreground">No sessions found (yet).</div>
               ) : null}
