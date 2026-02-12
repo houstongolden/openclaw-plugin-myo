@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ActivityIndicator } from "@/components/activity/activity-indicator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sun, Moon, Laptop, LayoutDashboard, FolderKanban, MessageSquare, Settings, Columns3, Activity, HeartPulse, AlarmClock, PenTool, Dna, Plug, Link2, Shield, Users, Library, Brain, Blocks } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Sun, Moon, Laptop, LayoutDashboard, FolderKanban, MessageSquare, Settings, Columns3, Activity, HeartPulse, AlarmClock, PenTool, Dna, Plug, Link2, Shield, Users, Library, Brain, Blocks, User } from "lucide-react";
 import { useTheme } from "next-themes";
 
 function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
@@ -77,6 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div>
                 <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">Work</div>
                 <div className="space-y-1">
+                  <NavItem href="/you" icon={<User className="h-4 w-4" />} label="You" />
                   <NavItem href="/" icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" />
                   <NavItem href="/activity" icon={<Activity className="h-4 w-4" />} label="Live" />
                   <NavItem href="/office" icon={<Blocks className="h-4 w-4" />} label="Office" />
@@ -132,15 +133,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Separator className="my-3" />
             <div className="text-xs font-medium text-muted-foreground">Pinned</div>
             <div className="mt-2 space-y-1">
-              <Link href="/projects/inbox" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">
-                Inbox
-              </Link>
-              <Link href="/projects/myo-ai" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">
-                Myo.ai
-              </Link>
-              <Link href="/projects/fitness" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">
-                Fitness
-              </Link>
+              <Link href="/projects/inbox" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">Inbox</Link>
+              <Link href="/projects/myo-ai" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">Myo.ai</Link>
+              <Link href="/projects/fitness" className="block rounded-xl px-3 py-2 text-sm hover:bg-muted">Fitness</Link>
+            </div>
+
+            <div className="mt-4">
+              <Separator className="my-3" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left hover:bg-muted">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500" />
+                      <div>
+                        <div className="text-sm font-semibold leading-none">Houston</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">Owner</div>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">Menu</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem asChild>
+                    <Link href="/you">You</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings">Settings</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/vault">Open vault</Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </ScrollArea>
         </aside>
